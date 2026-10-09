@@ -1,0 +1,35 @@
+/*
+ * Inter (OFL) — одна вариативная гарнитура, начертания 400–700.
+ * Файл собирается командой `npm run fonts` из assets-src/fonts:
+ * кириллица с казахскими буквами, Latin Extended, ₸ « » — №.
+ */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-var.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Метрики подогнаны под Inter, чтобы при подмене шрифта не прыгала вёрстка. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial"), local("ArialMT");
+  size-adjust: 107.29%;
+  ascent-override: 90.29%;
+  descent-override: 22.48%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Inter Fallback Android";
+  src: local("Roboto"), local("Roboto-Regular");
+  size-adjust: 105.01%;
+  ascent-override: 92.25%;
+  descent-override: 22.97%;
+  line-gap-override: 0%;
+}
+
+:root {
+  --font-sans: "Inter", "Inter Fallback", "Inter Fallback Android", system-ui, sans-serif;
+}

@@ -1,0 +1,60 @@
+# Шаблон. Не правьте домены здесь: готовый файл deploy/generated/nginx.conf создаёт команда
+#   npm run deploy:config
+# Домены берутся из SITE_DOMAIN (или SITE_URL / MEDIA_SITE_URL) в .env, порт — из PORT.
+#
+# nginx перед server.js: HTTPS, редирект с HTTP и передача адреса посетителя.
+# Сертификаты Let's Encrypt (один на все домены):
+#   sudo certbot certonly --webroot -w /var/www/certbot --cert-name {{CERT_NAME}} {{CERTBOT_DOMAINS}}
+
+upstream bazis_node {
+  server 127.0.0.1:{{PORT}};
+  keepalive 16;
+}
+
+# HTTP только перенаправляет на HTTPS (и отдаёт проверку certbot).
+server {
+  listen 80;
+  listen [::]:80;
+  server_name {{NGINX_HOSTS}};
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name {{NGINX_HOSTS}};
+
+  ssl_certificate     /etc/letsencrypt/live/{{CERT_NAME}}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/{{CERT_NAME}}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_session_cache shared:SSL:10m;
+
+  # Браузер запомнит, что сайт только HTTPS (пароль админки не уйдёт по HTTP даже по старой ссылке).
+  # Остальные заголовки безопасности (CSP, X-Frame-Options, Referrer-Policy…) отдаёт сам server.js
+  # (security/headers.js); add_header их бы задублировал, а у админки X-Frame-Options свой — DENY.
+  # HSTS server.js тоже присылает, поэтому от него скрываем копию и ставим здесь — и на ответах с ошибкой nginx.
+  proxy_hide_header Strict-Transport-Security;
+  add_header Strict-Transport-Security "max-age=31536000" always;
+
+  # Вложения в ИИ-чат — до 12 МБ, картинки товаров — до 2.5 МБ.
+  client_max_body_size 13m;
+
+  location / {
+    proxy_pass http://bazis_node;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    # Только настоящий адрес соединения: присланный посетителем X-Forwarded-For не передаём.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Ответ ИИ может идти до 45 с.
+    proxy_read_timeout 90s;
+  }
+}

@@ -1,0 +1,50 @@
+# Запуск:      docker compose up -d --build
+# Остановка:   docker compose down        (данные остаются в томах)
+# Журнал:      docker compose logs -f
+# Настройки (ADMIN_PASSWORD, OPENAI_API_KEY, SITE_DOMAIN…) — в .env рядом с этим файлом.
+# После изменения SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL нужна пересборка: docker compose up -d --build.
+# Автозапуск после входа в Windows: install-docker-autostart.bat.
+
+# Имя закреплено: по нему называются тома с данными (project_bazis-data…). Без него имя берётся из папки,
+# и после переименования или переноса папки сайт запустился бы с новой пустой базой.
+name: project
+
+services:
+  bazis:
+    build:
+      context: .
+      args:
+        SITE_DOMAIN: ${SITE_DOMAIN:-}
+        SITE_URL: ${SITE_URL:-}
+        MEDIA_SITE_URL: ${MEDIA_SITE_URL:-}
+    image: bazis-site
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    # Важнее значений из .env: внутри контейнера сервер слушает все адреса на порту 8787,
+    # а адрес посетителя берёт от прокси из сети Docker.
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      TRUST_PROXY: private
+    # Только 127.0.0.1: из интернета сайт открывается через Caddy/nginx на этом компьютере (deploy/*.template).
+    # Не публикуйте порт на 0.0.0.0 — тогда посетитель сможет подделать свой адрес в X-Forwarded-For.
+    ports:
+      - "127.0.0.1:${PORT:-8787}:8787"
+    volumes:
+      - bazis-data:/app/data
+      - bazis-uploads:/app/images/uploads
+      - bazis-logs:/app/logs
+    # Сервер дожидается текущих запросов (ответ ИИ — до 45 с) перед остановкой.
+    stop_grace_period: 60s
+    # Журнал Docker (docker compose logs) не растёт бесконечно; подробный журнал по дням — в томе bazis-logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bazis-data:
+  bazis-uploads:
+  bazis-logs:

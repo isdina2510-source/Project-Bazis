@@ -1,0 +1,596 @@
+/* Тема сайта «Базис Медиа» (класс site-media на <body>): ярче, контрастнее, больше визуала. */
+
+body.site-media {
+  --bg: #fbf7f4;
+  --bg-soft: #f3ecf4;
+  --paper: #ffffff;
+  --ink: #1b1530;
+  --ink-soft: #5a5370;
+  --line: rgba(27, 21, 48, 0.12);
+  --olive: #ff3d7f;
+  --olive-deep: #d6336c;
+  --graphite: #ff3d7f;
+  --graphite-deep: #e3266a;
+  --display-weight: 700;
+  --mh-dark: #140f24;
+  --mh-dark-2: #241a42;
+  --mh-on-dark: #f6f2ff;
+  --mh-on-dark-soft: rgba(246, 242, 255, 0.72);
+  --mh-grad: linear-gradient(120deg, #ff3d7f 0%, #ff7a45 50%, #7b5cff 100%);
+  --mh-radius: 20px;
+  background:
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(123, 92, 255, 0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(255, 61, 127, 0.08), transparent 55%),
+    var(--bg);
+}
+
+.site-media ::selection {
+  background: rgba(255, 61, 127, 0.25);
+}
+
+/* ---------- шапка: тёмная на всех страницах ---------- */
+
+.site-media .topbar.is-solid,
+.site-media.shop-page .shop-topbar {
+  background: rgba(20, 15, 36, 0.92);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: var(--mh-on-dark);
+}
+
+.site-media .logo {
+  gap: 0.55rem;
+}
+
+.site-media .logo-tag {
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: var(--mh-grad);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-media .nav-cta {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--mh-on-dark);
+}
+
+.site-media .nav-cta:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.site-media .nav-cta[aria-current="page"],
+.site-media .nav-contact {
+  border-color: transparent;
+  background: var(--mh-grad);
+  color: #fff;
+}
+
+.site-media .cart-trigger {
+  border-radius: 50%;
+}
+
+.site-media .cart-badge {
+  background: #ffd23f;
+  color: var(--mh-dark);
+}
+
+.site-media .topbar .lang-switch-button {
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--mh-on-dark);
+}
+
+.site-media .topbar .lang-switch-globe {
+  stroke: currentColor;
+}
+
+.site-media .lang-switch-menu {
+  border-radius: 14px;
+}
+
+/* ---------- кнопки, чипы, карточки ---------- */
+
+.site-media .btn {
+  border-radius: 999px;
+}
+
+.site-media .btn-primary {
+  background: var(--mh-grad);
+  background-size: 160% 100%;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(255, 61, 127, 0.25);
+  transition: background-position 0.35s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.site-media .btn-primary:hover {
+  background-position: 100% 0;
+  box-shadow: 0 14px 30px rgba(123, 92, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.site-media .btn:focus-visible,
+.site-media .nav-cta:focus-visible {
+  outline-color: #ff7a45;
+}
+
+.site-media .shop-cat {
+  border-radius: 999px;
+}
+
+.site-media .shop-cat.is-active {
+  border-color: transparent;
+  background: var(--mh-grad);
+  color: #fff;
+}
+
+.site-media .product-card,
+.site-media .article-card {
+  border-radius: var(--mh-radius);
+  box-shadow: 0 1px 0 rgba(27, 21, 48, 0.04);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.site-media .product-card:hover,
+.site-media .article-card:hover {
+  border-color: var(--line);
+  box-shadow: 0 18px 40px rgba(27, 21, 48, 0.1);
+  transform: translateY(-3px);
+}
+
+.site-media .eyebrow {
+  color: var(--olive-deep);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.site-media .shop-hero h1,
+.site-media .section-head h2 {
+  letter-spacing: -0.03em;
+}
+
+/* ---------- главная: первый экран ---------- */
+
+.mh-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 2.5rem;
+  align-items: center;
+  min-height: 100svh;
+  padding: 7rem max(var(--pad), calc((100% - var(--max)) / 2 + var(--pad))) 4rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(123, 92, 255, 0.45), transparent 42%),
+    radial-gradient(circle at 10% 90%, rgba(255, 61, 127, 0.35), transparent 40%),
+    radial-gradient(circle at 60% 110%, rgba(255, 122, 69, 0.3), transparent 45%),
+    linear-gradient(160deg, var(--mh-dark) 0%, var(--mh-dark-2) 100%);
+  color: var(--mh-on-dark);
+}
+
+.mh-eyebrow {
+  display: inline-block;
+  margin: 0 0 1.1rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: var(--mh-on-dark);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mh-hero h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 1.4rem + 4.2vw, 4.75rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+
+.mh-gradient-text {
+  background: var(--mh-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mh-lead {
+  margin: 1.4rem 0 0;
+  max-width: 34rem;
+  color: var(--mh-on-dark-soft);
+  font-size: 1.12rem;
+}
+
+.mh-hero .btn-ghost {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--mh-on-dark);
+}
+
+.mh-hero .btn-ghost:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mh-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mh-badges li {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--mh-on-dark);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.mh-badges li::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--mh-grad);
+  vertical-align: 0.08em;
+}
+
+.mh-collage {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  transform: rotate(-3deg);
+}
+
+.mh-tile {
+  overflow: hidden;
+  border-radius: 24px;
+  aspect-ratio: 1;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+  animation: mh-float 7s ease-in-out infinite;
+}
+
+.mh-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mh-tile-2 {
+  margin-top: 2.5rem;
+  animation-delay: -2s;
+}
+
+.mh-tile-3 {
+  margin-top: -2.5rem;
+  animation-delay: -4s;
+}
+
+.mh-tile-4 {
+  animation-delay: -1s;
+}
+
+@keyframes mh-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+
+/* ---------- услуги ---------- */
+
+.mh-service-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+.mh-service {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--mh-radius);
+  background: var(--paper);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mh-service:hover {
+  box-shadow: 0 18px 40px rgba(27, 21, 48, 0.12);
+  transform: translateY(-4px);
+}
+
+.mh-service-media {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+
+.mh-service-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.mh-service:hover .mh-service-media img {
+  transform: scale(1.06);
+}
+
+.mh-service-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem 1.1rem;
+}
+
+.mh-service-body strong {
+  font-size: 1.05rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mh-service-price {
+  color: var(--olive-deep);
+  font-weight: 700;
+}
+
+/* ---------- портфолио ---------- */
+
+.mh-section-lead {
+  margin: 0.8rem 0 0;
+  color: var(--ink-soft);
+}
+
+.mh-filter {
+  margin-top: -0.8rem;
+}
+
+.mh-works-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: dense;
+  gap: 1rem;
+}
+
+.mh-work {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--mh-radius);
+  aspect-ratio: 4 / 3;
+  background: var(--bg-soft);
+  isolation: isolate;
+}
+
+.mh-work.is-wide {
+  grid-column: span 2;
+  aspect-ratio: auto;
+}
+
+.mh-work img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.mh-work picture {
+  height: 100%;
+}
+
+.mh-work:hover img {
+  transform: scale(1.05);
+}
+
+.mh-work-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  padding: 1.1rem;
+  background: linear-gradient(180deg, transparent 40%, rgba(20, 15, 36, 0.85) 100%);
+  color: #fff;
+}
+
+.mh-work-kind {
+  align-self: flex-start;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.mh-work-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mh-work-cta {
+  max-height: 0;
+  opacity: 0;
+  color: #ffd23f;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.mh-work:hover .mh-work-cta,
+.mh-work:focus-visible .mh-work-cta {
+  max-height: 2rem;
+  opacity: 1;
+}
+
+.mh-work:focus-visible {
+  outline: 3px solid #ff7a45;
+  outline-offset: 3px;
+}
+
+/* ---------- как работаем ---------- */
+
+.mh-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.mh-step {
+  padding: 1.6rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--mh-radius);
+  background: var(--paper);
+}
+
+.mh-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  background: var(--mh-grad);
+  color: #fff;
+  font-weight: 800;
+}
+
+.mh-step h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 1.3rem;
+}
+
+.mh-step p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* ---------- призыв ---------- */
+
+.mh-cta-panel {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(2rem, 5vw, 3.5rem);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(123, 92, 255, 0.55), transparent 45%),
+    radial-gradient(circle at 0% 100%, rgba(255, 61, 127, 0.45), transparent 45%),
+    var(--mh-dark);
+  color: var(--mh-on-dark);
+  text-align: center;
+}
+
+.mh-cta-panel h2 {
+  margin: 0 auto;
+  max-width: 34rem;
+  font-size: clamp(1.8rem, 1.2rem + 2.4vw, 2.8rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.mh-cta-panel p {
+  margin: 1rem auto 1.8rem;
+  max-width: 32rem;
+  color: var(--mh-on-dark-soft);
+}
+
+/* ---------- адаптив ---------- */
+
+@media (max-width: 1000px) {
+  .mh-service-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .mh-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: 6rem;
+  }
+
+  .mh-collage {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.6rem;
+    transform: none;
+  }
+
+  .mh-tile {
+    border-radius: 16px;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .mh-tile-2,
+  .mh-tile-3 {
+    margin-top: 0;
+  }
+
+  .mh-works-grid,
+  .mh-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mh-works-grid,
+  .mh-steps,
+  .mh-service-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mh-work.is-wide {
+    grid-column: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .mh-work-cta {
+    max-height: 2rem;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 380px) {
+  .site-media .logo-tag {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mh-tile {
+    animation: none;
+  }
+
+  .mh-service,
+  .mh-service-media img,
+  .mh-work img,
+  .site-media .btn-primary,
+  .site-media .product-card,
+  .site-media .article-card {
+    transition: none;
+  }
+}

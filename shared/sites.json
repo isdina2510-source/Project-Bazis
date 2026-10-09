@@ -1,0 +1,27 @@
+{
+  "default": "bazis",
+  "sites": {
+    "bazis": {
+      "label": "Базис",
+      "categories": ["management", "infrastructure"],
+      "hosts": ["127.0.0.1", "localhost"],
+      "subdomain": "",
+      "url": "",
+      "devPort": 5173,
+      "outDir": "dist",
+      "admin": true
+    },
+    "media": {
+      "label": "Базис Медиа",
+      "categories": ["infrastructure", "media"],
+      "hosts": ["media.localhost"],
+      "subdomain": "media",
+      "url": "",
+      "devPort": 5174,
+      "outDir": "dist-media",
+      "admin": false,
+      "themeColor": "#140f24",
+      "ogImage": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=1200&q=80"
+    }
+  }
+}

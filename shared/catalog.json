@@ -1,0 +1,160 @@
+{
+  "CATEGORIES": [
+    {
+      "id": "management",
+      "title": "Управление бизнесом",
+      "eyebrow": "Система",
+      "lead": "Аудит, процессы, регламенты и работа с владельцем — чтобы компания шла без ежедневного ручного управления."
+    },
+    {
+      "id": "infrastructure",
+      "title": "Инфраструктура",
+      "eyebrow": "Цифровой контур",
+      "lead": "Сайт и рабочие цифровые инструменты, на которых держится присутствие компании в сети."
+    },
+    {
+      "id": "media",
+      "title": "Визуал и медиа",
+      "eyebrow": "Контент",
+      "lead": "Видео, мультфильмы, ИИ-фото и пригласительные — визуал, который можно сразу запускать в работу."
+    }
+  ],
+  "CART_RULES": {
+    "maxQty": 999,
+    "discussOnlyCategories": ["management"],
+    "singleQtyIds": ["p3", "p5"],
+    "singleQtyTitlePattern": "регламент|ментор"
+  },
+  "DEFAULT_PRODUCTS": [
+    {
+      "id": "p1",
+      "title": "Экспресс-аудит бизнеса",
+      "description": "Диагностика операционки за 7 дней: узкие места, сливы времени владельца и список приоритетных правок.",
+      "price": 150000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p2",
+      "title": "Карта процессов компании",
+      "description": "Описываем ключевые процессы, зоны ответственности и точки контроля — чтобы компания меньше зависела от вас.",
+      "price": 150000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p3",
+      "title": "Регламенты под ключ",
+      "description": "Пакет рабочих регламентов для отдела продаж, сервиса и финансов. Без воды — только то, чем пользуются.",
+      "price": 220000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p4",
+      "title": "Выход из микроменеджмента",
+      "description": "Личная работа с собственником: делегирование, контроль без ручного управления и освобождение времени.",
+      "price": 350000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p5",
+      "title": "Менторство владельца",
+      "description": "8 встреч: управленческое мышление, решения по росту и системный взгляд на компанию.",
+      "price": 480000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p6",
+      "title": "Запуск управленческого контура",
+      "description": "Собираем структуру, ритм совещаний и KPI так, чтобы бизнес шёл без ежедневного «тушения пожаров».",
+      "price": 520000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "management",
+      "image": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p7",
+      "title": "Создание сайта",
+      "description": "Сайт под ключ: структура, тексты, визуал и запуск. Без лишнего — только то, что приводит клиентов и выглядит как ваш бренд.",
+      "price": 50000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "infrastructure",
+      "image": "images/website.jpg"
+    },
+    {
+      "id": "p8",
+      "title": "Видеоролик под ключ",
+      "description": "Сценарий, съёмка или сборка, монтаж и готовый ролик для сайта, рекламы или соцсетей.",
+      "price": 15000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p9",
+      "title": "Мультфильм на заказ",
+      "description": "Короткий анимационный ролик: идея, персонажи, озвучка и финальный файл для презентаций и рекламы.",
+      "price": 30000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1626785774573-4b799315345d?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p10",
+      "title": "Генерация фото",
+      "description": "Серия изображений по вашему брифу: товар, интерьер, персонаж или бренд. Готово к публикации.",
+      "price": 15000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1554048612-b6a482bc67e5?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p11",
+      "title": "ИИ-фотосессия",
+      "description": "Студийный результат без студии: портреты и образы в нужном стиле, с обработкой и вариантами кадра.",
+      "price": 15000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p12",
+      "title": "Оживление фото",
+      "description": "Статичный кадр превращаем в живое видео: лёгкое движение, атмосфера, формат для сторис и рекламы.",
+      "price": 5000,
+      "currency": "KZT",
+      "kind": "service",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": "p13",
+      "title": "Пригласительные на мероприятия",
+      "description": "Пригласительные на мероприятия (Той, Ас, Шілдехана, 1 жас, Юбилей). Печать и digital-версия.",
+      "price": 3000,
+      "currency": "KZT",
+      "kind": "product",
+      "category": "media",
+      "image": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=900&q=80"
+    }
+  ]
+}

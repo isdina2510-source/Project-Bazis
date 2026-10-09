@@ -1,0 +1,438 @@
+/**
+ * Документы в PDF: счёт на оплату и акт выполненных работ по заказу, каталог товаров,
+ * карточка товара и карточка заявки.
+ *
+ * Счёт и акт фиксируются снимком в момент присвоения номера: повторное скачивание отдаёт тот же документ,
+ * даже если заказ, клиент или реквизиты потом изменились. Новые данные попадают в документ только
+ * через явный перевыпуск — старый номер аннулируется, выдаётся следующий.
+ */
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const { CATEGORIES } = require("../shared/catalog.json");
+const { orderTotals, amountInWords, toMinor } = require("./money");
+const { normalizeCompany, COMPANY_FIELDS } = require("./requisites");
+const { createImageLoader, parseDataUrlImage, sniffMime } = require("./images");
+const { createRenderer } = require("./render");
+const { localParts } = require("./templates/common");
+
+const KINDS = { invoice: "Счёт", act: "Акт" };
+const COMPANY_KEY = "company";
+const COMPANY_IMAGES = ["stamp", "signature"];
+const MAX_COMPANY_IMAGE_BYTES = 1024 * 1024;
+const IMAGE_CONCURRENCY = 4;
+const STATUS_LABELS = { new: "Новый", in_progress: "В работе", done: "Готово", cancelled: "Отмена" };
+
+function docError(code, status = 400, extra = {}) {
+  return Object.assign(new Error(code), { code, status, ...extra });
+}
+
+const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+/** Имя файла для Content-Disposition: без символов, запрещённых в Windows. */
+function safeFileName(name) {
+  return String(name).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 150) || "document";
+}
+
+async function writeAtomic(file, buffer) {
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  const tmp = file + "." + process.pid + "." + Date.now() + ".tmp";
+  await fs.promises.writeFile(tmp, buffer);
+  await fs.promises.rename(tmp, file);
+}
+
+/** Выполнить fn для всех элементов, не больше limit одновременно. */
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * @param {{ store: ReturnType<typeof import("../db/store").createStore>, rootDir: string, dataDir: string,
+ *   log?: Pick<Console, "warn" | "error">, renderer?: { render: Function, close: Function } }} options
+ */
+function createDocuments(options) {
+  const { store, rootDir, dataDir } = options;
+  const log = options.log || console;
+  const renderer = options.renderer || createRenderer();
+  const companyDir = path.join(dataDir, "company");
+  const pdfDir = path.join(dataDir, "documents");
+  const images = createImageLoader({ rootDir, cacheDir: path.join(dataDir, "cache", "images"), log });
+
+  /* ---------- реквизиты компании ---------- */
+
+  function companySettings() {
+    const saved = store.settings.get(COMPANY_KEY) || {};
+    const { values } = normalizeCompany(saved.fields || {});
+    return { fields: values, stamp: saved.stamp || null, signature: saved.signature || null };
+  }
+
+  /** Реквизиты для админки: поля и имена файлов печати и подписи (null — не загружены; имя меняется с картинкой). */
+  function getCompany() {
+    const settings = companySettings();
+    return { fields: settings.fields, stamp: settings.stamp, signature: settings.signature };
+  }
+
+  function saveCompany(raw) {
+    const { values, errors } = normalizeCompany(raw && typeof raw === "object" ? raw : {});
+    if (errors.length) throw docError("invalid_requisites", 400, { errors });
+    const current = companySettings();
+    store.settings.set(COMPANY_KEY, { ...current, fields: values });
+    return getCompany();
+  }
+
+  /**
+   * Печать или подпись: PNG/JPEG data-URL или null (убрать).
+   * Файлы называются по хешу содержимого и не удаляются — выпущенные документы ссылаются на них.
+   */
+  async function setCompanyImage(kind, dataUrl) {
+    if (!COMPANY_IMAGES.includes(kind)) throw docError("not_found", 404);
+    const current = companySettings();
+    let fileName = null;
+    if (dataUrl) {
+      const { buffer, ext } = parseDataUrlImage(dataUrl, MAX_COMPANY_IMAGE_BYTES);
+      fileName = kind + "-" + sha256(buffer).slice(0, 20) + ext;
+      const file = path.join(companyDir, fileName);
+      if (!fs.existsSync(file)) await writeAtomic(file, buffer);
+    }
+    store.settings.set(COMPANY_KEY, { ...current, [kind]: fileName });
+    return getCompany();
+  }
+
+  /** Файл печати или подписи из data/company; имя проверяется, чтобы не выйти за папку. */
+  function readCompanyAsset(fileName) {
+    if (!fileName || !/^(stamp|signature)-[0-9a-f]{20}\.(png|jpg)$/.test(fileName)) return null;
+    try {
+      return fs.readFileSync(path.join(companyDir, fileName));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Текущая печать или подпись для предпросмотра в админке. */
+  function companyImage(kind) {
+    if (!COMPANY_IMAGES.includes(kind)) return null;
+    const buffer = readCompanyAsset(companySettings()[kind]);
+    return buffer ? { buffer, mime: sniffMime(buffer) || "application/octet-stream" } : null;
+  }
+
+  function assetDataUrl(fileName) {
+    const buffer = readCompanyAsset(fileName);
+    if (!buffer) return null;
+    const mime = sniffMime(buffer);
+    return mime === "image/png" || mime === "image/jpeg" ? "data:" + mime + ";base64," + buffer.toString("base64") : null;
+  }
+
+  let logoCache;
+  function logo() {
+    if (logoCache === undefined) {
+      logoCache = null;
+      for (const dir of ["public", "dist"]) {
+        try {
+          const buffer = fs.readFileSync(path.join(rootDir, dir, "brand", "logo.png"));
+          logoCache = "data:image/png;base64," + buffer.toString("base64");
+          break;
+        } catch {
+          /* следующий вариант */
+        }
+      }
+    }
+    return logoCache;
+  }
+
+  /* ---------- счёт и акт по заказу ---------- */
+
+  function loadOrder(orderId) {
+    const order = store.orders.get(orderId);
+    if (!order) throw docError("not_found", 404);
+    return order;
+  }
+
+  function assertDocumentable(order) {
+    if (order.channel === "site") throw docError("lead_has_no_documents");
+    if (order.status === "cancelled") throw docError("order_cancelled");
+  }
+
+  /** Покупатель: реквизиты из карточки клиента, а если их нет — имя и телефон из заказа. */
+  function buyerFor(order) {
+    const client = order.clientId ? store.clients.get(order.clientId) : null;
+    const req = (client && client.requisites) || {};
+    const pick = (key) => (req[key] == null ? "" : String(req[key]));
+    return {
+      type: req.type === "company" ? "company" : "person",
+      name: pick("legalName") || (client && client.name) || order.customerName || "",
+      bin: pick("bin"),
+      address: pick("address"),
+      phone: (client && client.phone) || order.customerPhone || "",
+      email: pick("email"),
+      bank: pick("bank"),
+      iik: pick("iik"),
+      bik: pick("bik"),
+      kbe: pick("kbe"),
+      contract: pick("contract"),
+    };
+  }
+
+  /** Итоги по валютам, в которых есть что выставлять. */
+  function currencyBuckets(order) {
+    return orderTotals(order).filter((bucket) => bucket.lines.length || bucket.total > 0);
+  }
+
+  /** Содержательная часть документа: при её изменении документ помечается устаревшим. */
+  function sourceOf(bucket, buyer) {
+    const lines = bucket.lines.map((line, index) => ({
+      n: index + 1,
+      title: line.title,
+      unit: line.unit,
+      qty: line.qty,
+      price: line.price,
+      discount: line.discount,
+      amount: line.amount,
+    }));
+    const totals = {
+      subtotal: bucket.subtotal,
+      itemsDiscount: bucket.itemsDiscount,
+      orderDiscount: bucket.orderDiscount,
+      delivery: bucket.delivery,
+      total: bucket.total,
+      vatRate: bucket.vatRate,
+      vat: bucket.vat,
+    };
+    return { lines, totals, buyer, hash: sha256(JSON.stringify({ lines, totals, buyer })) };
+  }
+
+  function formatNumber(kind, year, seq, fields) {
+    const prefix = String((kind === "invoice" ? fields.invoicePrefix : fields.actPrefix) || "");
+    return prefix + year + "-" + String(seq).padStart(4, "0");
+  }
+
+  function issueOne(order, kind, bucket, replaces) {
+    const settings = companySettings();
+    const source = sourceOf(bucket, buyerFor(order));
+    const now = new Date().toISOString();
+    const year = localParts(now).year;
+    return store.documents.issue({
+      kind,
+      orderId: order.id,
+      currency: bucket.currency,
+      year,
+      replaces,
+      formatNumber: (seq) => formatNumber(kind, year, seq, settings.fields),
+      build: (number) => ({
+        snapshot: {
+          kind,
+          number,
+          date: now,
+          currency: bucket.currency,
+          order: { id: order.id, createdAt: order.createdAt },
+          company: settings.fields,
+          buyer: source.buyer,
+          lines: source.lines,
+          totals: source.totals,
+          amountInWords: amountInWords(source.totals.total, bucket.currency),
+          assets: { stamp: settings.stamp, signature: settings.signature },
+        },
+        total: source.totals.total / 100,
+        sourceHash: source.hash,
+      }),
+    });
+  }
+
+  /**
+   * Документы заказа с признаком «заказ изменился после выпуска» у действующих.
+   * buyerEmail — текущий e-mail покупателя из карточки клиента, чтобы подставить его при отправке.
+   */
+  function listForOrder(orderId) {
+    const order = loadOrder(orderId);
+    const buyer = buyerFor(order);
+    const hashes = new Map(currencyBuckets(order).map((bucket) => [bucket.currency, sourceOf(bucket, buyer).hash]));
+    return store.documents.listByOrder(order.id).map((doc) => ({
+      ...publicDoc(doc),
+      outdated: doc.status === "active" && hashes.get(doc.currency) !== doc.sourceHash,
+      buyerEmail: buyer.email,
+      sends: store.documents.sends(doc.id),
+    }));
+  }
+
+  function publicDoc(doc) {
+    const { snapshot, sourceHash, ...rest } = doc;
+    return { ...rest, title: KINDS[doc.kind] + " № " + doc.number };
+  }
+
+  /**
+   * Счёт или акт по заказу — по документу на каждую валюту позиций.
+   * Если действующий документ уже есть, он возвращается как есть (номер не тратится).
+   */
+  function issueForOrder(orderId, kind) {
+    if (!KINDS[kind]) throw docError("invalid_kind");
+    const order = loadOrder(orderId);
+    assertDocumentable(order);
+    const buckets = currencyBuckets(order);
+    if (!buckets.length) throw docError("empty_order");
+    const docs = buckets.map((bucket) => store.documents.active(order.id, kind, bucket.currency) || issueOne(order, kind, bucket));
+    const ids = new Set(docs.map((doc) => doc.id));
+    return listForOrder(order.id).filter((doc) => ids.has(doc.id));
+  }
+
+  /** Перевыпуск по текущим данным заказа: новый номер, старый документ аннулируется. */
+  function reissue(docId) {
+    const doc = store.documents.get(docId, false);
+    if (!doc) throw docError("not_found", 404);
+    if (doc.status !== "active") throw docError("document_annulled");
+    const order = loadOrder(doc.orderId);
+    assertDocumentable(order);
+    const bucket = currencyBuckets(order).find((item) => item.currency === doc.currency);
+    if (!bucket) throw docError("currency_gone");
+    const fresh = issueOne(order, doc.kind, bucket, doc.id);
+    return listForOrder(order.id).find((item) => item.id === fresh.id);
+  }
+
+  /** PDF выпущенного документа: собирается из снимка один раз и дальше берётся из data/documents. */
+  async function documentPdf(docId) {
+    const doc = store.documents.get(docId, true);
+    if (!doc || !doc.snapshot) throw docError("not_found", 404);
+    const annulled = doc.status !== "active";
+    const file = path.join(pdfDir, String(doc.year), doc.id + (annulled ? "-annulled" : "") + ".pdf");
+    let buffer = null;
+    try {
+      buffer = await fs.promises.readFile(file);
+    } catch {
+      const snap = doc.snapshot;
+      const assets = snap.assets || {};
+      buffer = await renderer.render(doc.kind, {
+        ...snap,
+        logo: logo(),
+        stamp: assetDataUrl(assets.stamp),
+        signature: assetDataUrl(assets.signature),
+        annulled,
+      });
+      await writeAtomic(file, buffer).catch((err) => log.warn("PDF: не удалось сохранить в кэш: " + err.message));
+    }
+    const suffix = doc.currency !== "KZT" ? " " + doc.currency : "";
+    return {
+      buffer,
+      fileName: safeFileName(KINDS[doc.kind] + " № " + doc.number + suffix + (annulled ? " (аннулирован)" : "") + ".pdf"),
+      doc: publicDoc(doc),
+    };
+  }
+
+  /* ---------- каталог, товар, заявка ---------- */
+
+  /** imageWidth — пиксели картинки: в списке каталога она ~120 pt, в карточке товара — во всю ширину. */
+  async function catalogItem(product, { withCategory, imageWidth }) {
+    const category = CATEGORIES.find((item) => item.id === product.category);
+    return {
+      title: product.title,
+      description: product.description,
+      kind: product.kind === "product" ? "product" : "service",
+      categoryTitle: withCategory && category ? category.title : "",
+      price: toMinor(product.price),
+      currency: product.currency || "KZT",
+      fromPrice: true,
+      stock: product.stock == null ? null : product.stock,
+      image: product.image ? await images.load(product.image, imageWidth) : null,
+    };
+  }
+
+  /**
+   * Каталог: выбранные товары (ids) или весь список, по разделам в порядке витрины.
+   * @param {{ ids?: string[], showPrices?: boolean, showStock?: boolean }} opts
+   */
+  async function catalogPdf(opts = {}) {
+    let products = store.products.list();
+    if (Array.isArray(opts.ids) && opts.ids.length) {
+      const wanted = new Set(opts.ids.map(String));
+      products = products.filter((product) => wanted.has(product.id));
+    }
+    if (!products.length) throw docError("empty_catalog");
+    const items = await mapLimit(products, IMAGE_CONCURRENCY, (product) =>
+      catalogItem(product, { withCategory: false, imageWidth: 360 })
+    );
+    const groups = [];
+    const known = new Set(CATEGORIES.map((item) => item.id));
+    for (const category of CATEGORIES) {
+      const groupItems = items.filter((_, index) => products[index].category === category.id);
+      if (groupItems.length) groups.push({ title: category.title, lead: category.lead, items: groupItems });
+    }
+    const other = items.filter((_, index) => !known.has(products[index].category));
+    if (other.length) groups.push({ title: "Прочее", lead: "", items: other });
+    const settings = companySettings();
+    const now = new Date().toISOString();
+    const buffer = await renderer.render("catalog", {
+      company: settings.fields,
+      logo: logo(),
+      title: products.length === 1 ? "Каталог: 1 позиция" : "Каталог товаров и услуг",
+      generatedAt: now,
+      showPrices: opts.showPrices !== false,
+      showStock: !!opts.showStock,
+      groups,
+    });
+    const p = localParts(now);
+    const date = p.year + "-" + String(p.month).padStart(2, "0") + "-" + String(p.day).padStart(2, "0");
+    return { buffer, fileName: safeFileName("Каталог " + date + ".pdf") };
+  }
+
+  async function productPdf(productId) {
+    const product = store.products.get(productId);
+    if (!product) throw docError("not_found", 404);
+    const settings = companySettings();
+    const buffer = await renderer.render("product", {
+      company: settings.fields,
+      logo: logo(),
+      generatedAt: new Date().toISOString(),
+      item: await catalogItem(product, { withCategory: true, imageWidth: 1000 }),
+    });
+    return { buffer, fileName: safeFileName(product.title + ".pdf") };
+  }
+
+  async function leadPdf(orderId) {
+    const order = loadOrder(orderId);
+    if (order.channel !== "site") throw docError("not_a_lead");
+    const direction = CATEGORIES.find((item) => item.id === (order.lead && order.lead.direction));
+    const settings = companySettings();
+    const buffer = await renderer.render("lead", {
+      company: settings.fields,
+      logo: logo(),
+      generatedAt: new Date().toISOString(),
+      lead: {
+        id: order.id,
+        createdAt: order.createdAt,
+        statusLabel: STATUS_LABELS[order.status] || order.status,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        directionTitle: direction ? direction.title : "",
+        sourcePage: order.sourcePage,
+        note: order.note,
+        comment: (order.lead && order.lead.comment) || order.message || "",
+      },
+    });
+    return { buffer, fileName: safeFileName("Заявка " + (order.customerName || order.id) + ".pdf") };
+  }
+
+  return {
+    COMPANY_FIELDS,
+    getCompany,
+    saveCompany,
+    setCompanyImage,
+    companyImage,
+    listForOrder,
+    issueForOrder,
+    reissue,
+    documentPdf,
+    catalogPdf,
+    productPdf,
+    leadPdf,
+    logSend: (entry) => store.documents.logSend(entry),
+    close: () => renderer.close(),
+  };
+}
+
+module.exports = { createDocuments, docError, safeFileName };

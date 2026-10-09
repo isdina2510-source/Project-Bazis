@@ -1,0 +1,33 @@
+# Шаблон. Не правьте домены здесь: готовый файл deploy/generated/Caddyfile создаёт команда
+#   npm run deploy:config
+# Домены берутся из SITE_DOMAIN (или SITE_URL / MEDIA_SITE_URL) в .env, порт — из PORT.
+#
+# Caddy проще всего на Windows: сам получает и продлевает сертификаты HTTPS и перенаправляет HTTP на HTTPS.
+# Нужны открытые порты 80 и 443 и DNS-записи (A) всех доменов ниже на этот сервер.
+# Запуск: caddy run --config deploy/generated/Caddyfile  (как служба Windows — через NSSM или планировщик).
+# Caddy передаёт Host и X-Forwarded-Proto, а X-Forwarded-For ставит сам — подделанный посетителем заголовок отбрасывается.
+
+{{CADDY_HOSTS}} {
+	encode zstd gzip
+
+	# Остальные заголовки безопасности (CSP, X-Frame-Options, Referrer-Policy…) отдаёт сам server.js
+	# (security/headers.js); «?» — только если сервер их не прислал, чтобы не перезаписать DENY у админки.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		?X-Frame-Options "SAMEORIGIN"
+		?X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Вложения в ИИ-чат — до 12 МБ, картинки товаров — до 2.5 МБ.
+	request_body {
+		max_size 13MB
+	}
+
+	reverse_proxy 127.0.0.1:{{PORT}} {
+		transport http {
+			# Ответ ИИ может идти до 45 с.
+			read_timeout 90s
+		}
+	}
+}

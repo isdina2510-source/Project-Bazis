@@ -1,0 +1,39 @@
+{
+  "COMPANY_FIELDS": [
+    { "key": "name", "label": "Наименование", "placeholder": "ИП «Базис»", "max": 200, "group": "main" },
+    { "key": "bin", "label": "ИИН / БИН", "max": 12, "pattern": "^\\d{12}$", "patternHint": "12 цифр", "group": "main" },
+    { "key": "address", "label": "Юридический адрес", "max": 300, "group": "main" },
+    { "key": "phone", "label": "Телефон", "max": 40, "group": "main" },
+    { "key": "email", "label": "E-mail", "max": 120, "type": "email", "group": "main" },
+    { "key": "bank", "label": "Банк", "max": 200, "group": "bank" },
+    { "key": "iik", "label": "ИИК (IBAN)", "max": 34, "pattern": "^KZ[0-9A-Z]{18}$", "patternHint": "KZ и 18 знаков", "upper": true, "group": "bank" },
+    { "key": "bik", "label": "БИК", "max": 11, "pattern": "^[0-9A-Z]{8}([0-9A-Z]{3})?$", "patternHint": "8 или 11 знаков", "upper": true, "group": "bank" },
+    { "key": "kbe", "label": "КБе", "max": 2, "pattern": "^\\d{2}$", "patternHint": "2 цифры", "group": "bank" },
+    { "key": "knp", "label": "КНП (код назначения платежа)", "max": 3, "pattern": "^\\d{3}$", "patternHint": "3 цифры", "group": "bank" },
+    { "key": "director", "label": "Подписант (ФИО)", "max": 120, "group": "sign" },
+    { "key": "directorPosition", "label": "Должность подписанта", "placeholder": "Индивидуальный предприниматель", "max": 120, "group": "sign" },
+    { "key": "accountant", "label": "Главный бухгалтер (ФИО)", "max": 120, "group": "sign" },
+    { "key": "invoicePrefix", "label": "Префикс номера счёта", "placeholder": "например, СЧ-", "max": 10, "group": "docs" },
+    { "key": "actPrefix", "label": "Префикс номера акта", "placeholder": "например, АВР-", "max": 10, "group": "docs" },
+    { "key": "invoiceNote", "label": "Примечание в счёте", "placeholder": "Счёт действителен 5 банковских дней", "max": 500, "multiline": true, "group": "docs" }
+  ],
+  "COMPANY_GROUPS": {
+    "main": "Организация",
+    "bank": "Банковские реквизиты",
+    "sign": "Подписи",
+    "docs": "Документы"
+  },
+  "CLIENT_TYPES": { "person": "Физическое лицо", "company": "Юридическое лицо / ИП" },
+  "CLIENT_FIELDS": [
+    { "key": "legalName", "label": "Наименование / ФИО для документов", "max": 200 },
+    { "key": "bin", "label": "ИИН / БИН", "max": 12, "pattern": "^\\d{12}$", "patternHint": "12 цифр" },
+    { "key": "address", "label": "Адрес", "max": 300 },
+    { "key": "email", "label": "E-mail для документов", "max": 120, "type": "email" },
+    { "key": "bank", "label": "Банк", "max": 200, "companyOnly": true },
+    { "key": "iik", "label": "ИИК (IBAN)", "max": 34, "pattern": "^KZ[0-9A-Z]{18}$", "patternHint": "KZ и 18 знаков", "upper": true, "companyOnly": true },
+    { "key": "bik", "label": "БИК", "max": 11, "pattern": "^[0-9A-Z]{8}([0-9A-Z]{3})?$", "patternHint": "8 или 11 знаков", "upper": true, "companyOnly": true },
+    { "key": "kbe", "label": "КБе", "max": 2, "pattern": "^\\d{2}$", "patternHint": "2 цифры", "companyOnly": true },
+    { "key": "contract", "label": "Договор (номер и дата)", "max": 120 }
+  ],
+  "EMAIL_PATTERN": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+}

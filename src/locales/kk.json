@@ -1,0 +1,424 @@
+{
+  "common": {
+    "brand": "TODO(kk): Базис",
+    "close": "TODO(kk): Закрыть"
+  },
+  "meta": {
+    "home": {
+      "title": "TODO(kk): Базис — порядок в бизнесе",
+      "description": "TODO(kk): Базис — консалтинг для владельцев бизнеса. Порядок в процессах, выход из микроменеджмента без потери контроля.",
+      "og_description": "TODO(kk): Консалтинг для владельцев бизнеса: порядок в процессах и выход из микроменеджмента без потери контроля.",
+      "twitter_description": "TODO(kk): Консалтинг для владельцев бизнеса: порядок в процессах и выход из микроменеджмента."
+    },
+    "shop": {
+      "title": "TODO(kk): Услуги — Базис",
+      "description": "TODO(kk): Услуги Базис — управление бизнесом и инфраструктура: аудит, процессы, регламенты, менторство владельца и создание сайта.",
+      "og_description": "TODO(kk): Управление бизнесом и инфраструктура: аудит, процессы, регламенты, менторство владельца и сайт.",
+      "twitter_description": "TODO(kk): Управление бизнесом и инфраструктура от Базис."
+    },
+    "articles": {
+      "title": "TODO(kk): Полезные статьи — Базис",
+      "description": "TODO(kk): Полезные статьи и короткие тесты для владельцев бизнеса: процессы, регламенты, выход из микроменеджмента и сайт.",
+      "og_description": "TODO(kk): Статьи и тесты для владельцев бизнеса: процессы, команда и сайт — без воды.",
+      "twitter_description": "TODO(kk): Статьи и тесты для владельцев бизнеса от Базис."
+    }
+  },
+  "header": {
+    "nav_label": "TODO(kk): Навигация",
+    "logo_alt": "TODO(kk): Базис",
+    "logo_tag": "TODO(kk): Медиа",
+    "cart": "TODO(kk): Корзина",
+    "menu": {
+      "about": "TODO(kk): О нас",
+      "shop": "TODO(kk): Услуги",
+      "process": "TODO(kk): Как мы работаем",
+      "articles": "TODO(kk): Статьи",
+      "works": "TODO(kk): Работы",
+      "contact": "TODO(kk): Контакт"
+    }
+  },
+  "footer": {
+    "copyright": "TODO(kk): © {year} Базис. Консалтинг для владельцев бизнеса.",
+    "home": "TODO(kk): На главную",
+    "shop": "TODO(kk): Услуги",
+    "articles": "TODO(kk): Полезные статьи",
+    "top": "TODO(kk): Наверх",
+    "sibling": "TODO(kk): Видео и визуал — Базис Медиа"
+  },
+  "articles": {
+    "eyebrow": "TODO(kk): Блог Базис",
+    "title": "TODO(kk): Полезные статьи",
+    "lead": "TODO(kk): Практичные статьи и короткие тесты для владельцев бизнеса: процессы, команда, сайт и контент — без воды.",
+    "filter_label": "TODO(kk): Тип публикаций",
+    "all": "TODO(kk): Все",
+    "article": "TODO(kk): Статьи",
+    "test": "TODO(kk): Тесты",
+    "type_article": "TODO(kk): Статья",
+    "type_test": "TODO(kk): Тест",
+    "read": "TODO(kk): Читать",
+    "take_test": "TODO(kk): Пройти тест",
+    "back": "TODO(kk): ← Все статьи",
+    "related": "TODO(kk): Читайте также",
+    "cta_discuss": "TODO(kk): Обсудить в WhatsApp",
+    "cta_shop": "TODO(kk): Подробнее об услуге",
+    "home_eyebrow": "TODO(kk): Полезное",
+    "home_all": "TODO(kk): Все статьи",
+    "quiz": {
+      "progress": "TODO(kk): Вопрос {current} из {total}",
+      "prev": "TODO(kk): ← Назад",
+      "restart": "TODO(kk): Пройти ещё раз",
+      "score": "TODO(kk): Ваш результат: {score} из {max}",
+      "recommend": "TODO(kk): Что поможет"
+    }
+  },
+  "home": {
+    "hero": {
+      "brand_line": "TODO(kk): ИП Базис",
+      "title_line1": "TODO(kk): Порядок в бизнесе.",
+      "title_line2": "TODO(kk): Свобода для владельца.",
+      "lead": "TODO(kk): Помогаю навести системный порядок в процессах, убрать хаос и выйти из операционного микроменеджмента без потери контроля.",
+      "cta_shop": "TODO(kk): Смотреть услуги",
+      "cta_about": "TODO(kk): Узнать подход",
+      "image_alt": "TODO(kk): Портрет эксперта в деловом стиле"
+    },
+    "about": {
+      "eyebrow": "TODO(kk): О нас",
+      "title": "TODO(kk): Обо мне",
+      "lead": "TODO(kk): Меня зовут Динара. За плечами — 20 лет в управлении, консалтинг и системный подход к построению компаний.",
+      "quote": "TODO(kk): Я не читаю лекции — я помогаю настроить механизмы вашего бизнеса так, чтобы компания работала как часы, а у вас появилось время на развитие и жизнь."
+    },
+    "help": {
+      "eyebrow": "TODO(kk): Форматы работы",
+      "title": "TODO(kk): С чем помогаю",
+      "audit": {
+        "title": "TODO(kk): Аудит и диагностика",
+        "text": "TODO(kk): Находим узкие места в операционке и «сливы» времени владельца."
+      },
+      "setup": {
+        "title": "TODO(kk): Настройка системы",
+        "text": "TODO(kk): Выстраиваем бизнес-процессы, регламенты и структуру, чтобы компания не зависела от ручного управления."
+      },
+      "mentoring": {
+        "title": "TODO(kk): Наставничество",
+        "text": "TODO(kk): Личная работа с собственником: мышление владельца и управленческие навыки."
+      }
+    },
+    "shop_preview": {
+      "eyebrow": "TODO(kk): Услуги",
+      "title": "TODO(kk): Направления работы",
+      "all": "TODO(kk): Весь каталог",
+      "empty": "TODO(kk): Товары скоро появятся."
+    },
+    "sibling": {
+      "eyebrow": "TODO(kk): Отдельный сайт",
+      "title": "TODO(kk): Видео и визуал",
+      "lead": "TODO(kk): Видеоролики, мультфильмы, ИИ-фото и пригласительные — на сайте Базис Медиа.",
+      "cta": "TODO(kk): Перейти в Базис Медиа"
+    },
+    "process": {
+      "eyebrow": "TODO(kk): Процесс",
+      "title": "TODO(kk): Как мы работаем",
+      "lead": "TODO(kk): Четыре понятных шага — от первого разговора до бизнеса, который работает без вашего ежедневного участия.",
+      "intro": {
+        "title": "TODO(kk): Знакомство",
+        "text": "TODO(kk): Короткий разговор в мессенджере или по телефону: что болит, какие цели и где вы теряете больше всего времени.",
+        "result": "TODO(kk): Понимаем, чем я могу помочь"
+      },
+      "diagnostics": {
+        "title": "TODO(kk): Диагностика",
+        "text": "TODO(kk): Разбираем процессы, роли и решения, которые держатся только на вас. Смотрим, где теряются деньги и время.",
+        "result": "TODO(kk): Карта проблем и план изменений"
+      },
+      "implementation": {
+        "title": "TODO(kk): Внедрение",
+        "text": "TODO(kk): Вместе с командой выстраиваем процессы, регламенты, зоны ответственности и рабочие инструменты.",
+        "result": "TODO(kk): Система, по которой работает команда"
+      },
+      "support": {
+        "title": "TODO(kk): Сопровождение",
+        "text": "TODO(kk): Проверяем, как всё работает на практике, корректируем и постепенно передаём управление команде.",
+        "result": "TODO(kk): Вы выходите из операционки"
+      },
+      "cta": "TODO(kk): Обсудить задачу",
+      "cta_test": "TODO(kk): Пройти тест за 2 минуты"
+    },
+    "fit": {
+      "eyebrow": "TODO(kk): Аудитория",
+      "title": "TODO(kk): Кому подойдёт «Базис»",
+      "companies": "TODO(kk): <strong>Небольшие и средние компании,</strong> где «всё держится на шефе».",
+      "owners": "TODO(kk): <strong>Собственники,</strong> которые устали тушить пожары и хотят системного роста."
+    },
+    "philosophy": {
+      "eyebrow": "TODO(kk): Подход",
+      "title": "TODO(kk): Философия",
+      "text": "TODO(kk): Никакой воды и сложных академических теорий. Только практика, прикладные инструменты и прочный фундамент под ваши задачи.",
+      "no_infobiz": "TODO(kk): Без инфоцыганства",
+      "no_school": "TODO(kk): Без «школьных» программ",
+      "only_working": "TODO(kk): Только рабочие механизмы"
+    }
+  },
+  "media_home": {
+    "hero": {
+      "eyebrow": "TODO(kk): Базис Медиа",
+      "title_line1": "TODO(kk): Визуал,",
+      "title_line2": "TODO(kk): который запоминают.",
+      "lead": "TODO(kk): Видеоролики, мультфильмы, ИИ-фотосессии, оживление фото, пригласительные и сайты — делаем под ключ, от идеи до готовых файлов.",
+      "cta_order": "TODO(kk): Выбрать услугу",
+      "cta_works": "TODO(kk): Смотреть работы",
+      "badge_turnkey": "TODO(kk): Под ключ",
+      "badge_ai": "TODO(kk): ИИ + ручная доработка",
+      "badge_order": "TODO(kk): Заказ в WhatsApp или Telegram"
+    },
+    "services": {
+      "eyebrow": "TODO(kk): Услуги",
+      "title": "TODO(kk): Что мы создаём",
+      "all": "TODO(kk): Все услуги и цены",
+      "more": "TODO(kk): Подробнее"
+    },
+    "works": {
+      "eyebrow": "TODO(kk): Портфолио",
+      "title": "TODO(kk): Примеры работ",
+      "lead": "TODO(kk): Нажмите на работу, чтобы заказать похожую, — откроется WhatsApp с готовым сообщением.",
+      "filter_label": "TODO(kk): Тип работ",
+      "all": "TODO(kk): Все",
+      "video": "TODO(kk): Видео",
+      "cartoon": "TODO(kk): Мультфильмы",
+      "photo": "TODO(kk): ИИ-фото",
+      "invite": "TODO(kk): Пригласительные",
+      "site": "TODO(kk): Сайты",
+      "order_similar": "TODO(kk): Хочу так же"
+    },
+    "process": {
+      "eyebrow": "TODO(kk): Как это работает",
+      "title": "TODO(kk): Три шага до готового результата",
+      "brief": {
+        "title": "TODO(kk): Бриф",
+        "text": "TODO(kk): Рассказываете задачу и присылаете материалы: фото, тексты, пожелания по стилю и сроку."
+      },
+      "production": {
+        "title": "TODO(kk): Производство",
+        "text": "TODO(kk): Собираем черновой вариант, показываем вам и вносим правки."
+      },
+      "delivery": {
+        "title": "TODO(kk): Готово",
+        "text": "TODO(kk): Отдаём файлы в нужных форматах — для соцсетей, мессенджеров, печати или сайта."
+      }
+    },
+    "cta": {
+      "title": "TODO(kk): Есть идея? Обсудим за пять минут",
+      "text": "TODO(kk): Напишите, что нужно и к какому сроку, — подскажем формат и стоимость.",
+      "button": "TODO(kk): Обсудить проект"
+    }
+  },
+  "contact": {
+    "section_eyebrow": "TODO(kk): Контакты",
+    "section_title": "TODO(kk): Расскажите о своей задаче",
+    "section_text": "TODO(kk): Заполните форму или напишите в удобный мессенджер. Я свяжусь с вами и предложу время для короткого разговора.",
+    "call": "TODO(kk): Позвонить",
+    "form": {
+      "name": "TODO(kk): Имя",
+      "name_placeholder": "TODO(kk): Как к вам обращаться",
+      "phone": "TODO(kk): Телефон",
+      "direction": "TODO(kk): Направление",
+      "comment": "TODO(kk): Комментарий",
+      "comment_placeholder": "TODO(kk): Расскажите о бизнесе, задаче и сроках",
+      "submit": "TODO(kk): Отправить заявку",
+      "sending": "TODO(kk): Отправляем…",
+      "consent": "TODO(kk): Нажимая кнопку, вы соглашаетесь на обработку персональных данных.",
+      "error_name": "TODO(kk): Укажите, как к вам обращаться.",
+      "error_phone": "TODO(kk): Укажите телефон полностью: +7 и 10 цифр.",
+      "error_send": "TODO(kk): Не удалось отправить заявку. Попробуйте ещё раз или напишите в WhatsApp.",
+      "error_limited": "TODO(kk): Заявок с этого устройства или номера уже много — мы свяжемся с вами. Если срочно, напишите в WhatsApp.",
+      "sent_title": "TODO(kk): Спасибо, заявка отправлена!",
+      "sent_text": "TODO(kk): Я свяжусь с вами по указанному телефону, чтобы обсудить задачу.",
+      "again": "TODO(kk): Отправить ещё одну"
+    }
+  },
+  "shop": {
+    "hero": {
+      "eyebrow": "TODO(kk): Услуги Базис",
+      "title": "TODO(kk): Выберите формат работы",
+      "text": "TODO(kk): Управление бизнесом обсуждаем в мессенджере, инфраструктуру можно сразу заказать через корзину — в WhatsApp или Telegram."
+    },
+    "catalog": {
+      "eyebrow": "TODO(kk): Каталог",
+      "all": "TODO(kk): Все разделы",
+      "categories_label": "TODO(kk): Разделы каталога",
+      "empty": "TODO(kk): Пока нет товаров. Добавьте их в админке.",
+      "empty_section": "TODO(kk): В этом разделе пока нет позиций."
+    }
+  },
+  "catalog": {
+    "category": {
+      "management": {
+        "title": "TODO(kk): Управление бизнесом",
+        "eyebrow": "TODO(kk): Система",
+        "lead": "TODO(kk): Аудит, процессы, регламенты и работа с владельцем — чтобы компания шла без ежедневного ручного управления."
+      },
+      "infrastructure": {
+        "title": "TODO(kk): Инфраструктура",
+        "eyebrow": "TODO(kk): Цифровой контур",
+        "lead": "TODO(kk): Сайт и рабочие цифровые инструменты, на которых держится присутствие компании в сети."
+      },
+      "media": {
+        "title": "TODO(kk): Визуал и медиа",
+        "eyebrow": "TODO(kk): Контент",
+        "lead": "TODO(kk): Видео, мультфильмы, ИИ-фото и пригласительные — визуал, который можно сразу запускать в работу."
+      }
+    }
+  },
+  "price": {
+    "from": "TODO(kk): от {price}"
+  },
+  "product": {
+    "discuss": "TODO(kk): Обсудить",
+    "add": "TODO(kk): В корзину",
+    "added": "TODO(kk): Добавлено",
+    "out_of_stock": "TODO(kk): Нет в наличии",
+    "stock_left": "TODO(kk): Осталось: {count}",
+    "to_shop": "TODO(kk): Смотреть услуги",
+    "folder": {
+      "title": "TODO(kk): Все услуги направления",
+      "open_section": "TODO(kk): Открыть раздел услуг"
+    }
+  },
+  "cart": {
+    "title": "TODO(kk): Корзина",
+    "decrease": "TODO(kk): Уменьшить",
+    "increase": "TODO(kk): Увеличить",
+    "remove": "TODO(kk): Удалить",
+    "empty": "TODO(kk): Корзина пуста. Добавьте услугу кнопкой ниже.",
+    "add_service": "TODO(kk): Добавить услугу",
+    "all_in_cart": "TODO(kk): Все услуги уже в корзине. Увеличьте количество через + у позиции.",
+    "total": "TODO(kk): Итого",
+    "name_label": "TODO(kk): Имя клиента",
+    "name_placeholder": "TODO(kk): Как обратиться",
+    "phone_label": "TODO(kk): Телефон клиента",
+    "hint": "TODO(kk): Имя и телефон нужны, чтобы заказ попал в CRM.",
+    "checkout_whatsapp": "TODO(kk): Оформить в WhatsApp",
+    "checkout_telegram": "TODO(kk): Оформить в Telegram",
+    "clear": "TODO(kk): Очистить корзину",
+    "unavailable": "TODO(kk): Закончились — в заказ не войдут:",
+    "status": {
+      "empty": "TODO(kk): Корзина пуста. Добавьте услугу.",
+      "invalid": "TODO(kk): Укажите имя и телефон, чтобы оформить заказ.",
+      "saving": "TODO(kk): Сохраняем заказ…",
+      "telegram_copied": "TODO(kk): Заказ сохранён. Текст скопирован — вставьте в Telegram (Ctrl+V).",
+      "telegram_not_copied": "TODO(kk): Заказ сохранён. Браузер не дал скопировать текст автоматически — скопируйте его ниже и отправьте в Telegram.",
+      "whatsapp_ok": "TODO(kk): Заказ сохранён. Открываем WhatsApp.",
+      "error": "TODO(kk): Не удалось сохранить заказ. Попробуйте ещё раз.",
+      "catalog_changed": "TODO(kk): Цены или состав каталога обновились. Проверьте корзину и оформите заказ ещё раз.",
+      "out_of_stock": "TODO(kk): Части товаров не хватает на складе. Корзина обновлена по остаткам — проверьте её и оформите заказ ещё раз.",
+      "rate_limited": "TODO(kk): Слишком много заказов подряд. Подождите несколько минут или напишите нам в WhatsApp.",
+      "busy": "TODO(kk): Сейчас слишком много заказов. Пожалуйста, напишите нам в WhatsApp."
+    },
+    "manual_copy": {
+      "label": "TODO(kk): Текст заказа для Telegram",
+      "copy": "TODO(kk): Скопировать",
+      "copied": "TODO(kk): Скопировано ✓",
+      "open": "TODO(kk): Открыть Telegram",
+      "done": "TODO(kk): Готово"
+    }
+  },
+  "message": {
+    "hello_consultation": "TODO(kk): Здравствуйте! Хочу получить консультацию на сайте ИП Базис.",
+    "hello_order": "TODO(kk): Здравствуйте! Хочу оформить заказ на сайте ИП Базис.",
+    "package": "TODO(kk): Выбранный пакет:",
+    "total": "TODO(kk): Итого: {total}",
+    "next_steps": "TODO(kk): Пожалуйста, подскажите следующие шаги.",
+    "name": "TODO(kk): Имя: {name}",
+    "phone": "TODO(kk): Телефон: {phone}",
+    "handoff_hello": "TODO(kk): Здравствуйте! Пишу с сайта ИП Базис.",
+    "handoff_want": "TODO(kk): Хочу получить консультацию.",
+    "handoff_question": "TODO(kk): Мой вопрос: {text}",
+    "handoff_files": "TODO(kk): Файлы к вопросу (пришлю следующим сообщением): {files}",
+    "handoff_code": "TODO(kk): Номер обращения из чата на сайте: {code}",
+    "article": "TODO(kk): Здравствуйте! Прочитал(а) на сайте ИП Базис статью «{title}».",
+    "quiz": "TODO(kk): Здравствуйте! Прошёл(а) на сайте ИП Базис тест «{title}»: {score} из {max} — «{result}».",
+    "service": "TODO(kk): Хочу обсудить услугу «{service}».",
+    "portfolio": "TODO(kk): Здравствуйте! Хочу заказать что-то похожее на работу «{title}» с сайта Базис Медиа."
+  },
+  "chat": {
+    "open": "TODO(kk): Открыть ИИ-чат",
+    "title": "TODO(kk): ИИ-консультант Дина",
+    "subtitle": "TODO(kk): Файлы и фото · размеры меняйте ползунком и разделителями",
+    "greeting": "TODO(kk): Здравствуйте! Я ИИ-консультант Дина.\nВыберите раздел ниже — открою услуги внутри. Можно также написать вопрос.",
+    "back_reply": "TODO(kk): Выберите раздел ниже — открою услуги внутри.",
+    "resize_title": "TODO(kk): Тяните, чтобы изменить высоту",
+    "resize_label": "TODO(kk): Изменить высоту чата",
+    "height": "TODO(kk): Высота",
+    "height_label": "TODO(kk): Высота окна чата",
+    "typing": "TODO(kk): Печатает...",
+    "sections_show": "TODO(kk): Показать разделы",
+    "sections_drag": "TODO(kk): Тяните вниз, чтобы уменьшить разделы, или нажмите, чтобы свернуть",
+    "sections_size": "TODO(kk): Размер панели разделов",
+    "sections_collapsed": "TODO(kk): Разделы ▴",
+    "compose_drag": "TODO(kk): Тяните вверх, чтобы увеличить поле ввода",
+    "compose_size": "TODO(kk): Высота поля ввода",
+    "remove_file": "TODO(kk): Убрать",
+    "reading_file": "TODO(kk): Читаю файл…",
+    "attach_label": "TODO(kk): Прикрепить файл или изображение",
+    "attach_title": "TODO(kk): Файл или изображение",
+    "placeholder": "TODO(kk): Напишите вопрос...",
+    "send": "TODO(kk): Отправить",
+    "continue_whatsapp": "TODO(kk): Продолжить в WhatsApp",
+    "offline_lead": "TODO(kk): {lead}. Отвечаю по каталогу сайта:",
+    "parse_failed": "TODO(kk): Не удалось разобрать сообщение. Попробуйте ещё раз или продолжите в WhatsApp.",
+    "quick": {
+      "back": "TODO(kk): ← Обратно",
+      "back_label": "TODO(kk): Обратно",
+      "contact": "TODO(kk): Связаться",
+      "sections": "TODO(kk): Разделы",
+      "all_prices": "TODO(kk): Все услуги и цены",
+      "service_count": "TODO(kk): {count, plural, one {# услуга} few {# услуги} many {# услуг} other {# услуги}}",
+      "ask_contact": "TODO(kk): Хочу связаться с вами",
+      "ask_product": "TODO(kk): Расскажите про «{title}»",
+      "ask_all_prices": "TODO(kk): Покажите все услуги и цены"
+    },
+    "error": {
+      "cloud_unavailable": "TODO(kk): Облачный ИИ сейчас недоступен",
+      "cloud_unavailable_reason": "TODO(kk): Облачный ИИ сейчас недоступен ({reason})",
+      "too_large": "TODO(kk): Вложения слишком большие для ИИ: уменьшите файлы или отправьте их в WhatsApp",
+      "timeout": "TODO(kk): Превышено время ожидания ответа ИИ.",
+      "network": "TODO(kk): Нет связи с сервером ИИ. Запустите сайт через npm start.",
+      "rate_limit": "TODO(kk): Слишком много запросов. Подождите минуту.",
+      "unavailable": "TODO(kk): Облачный ИИ временно недоступен."
+    }
+  },
+  "file": {
+    "size_b": "TODO(kk): {size} Б",
+    "size_kb": "TODO(kk): {size} КБ",
+    "size_mb": "TODO(kk): {size} МБ",
+    "default_name": "TODO(kk): файл",
+    "no_type": "TODO(kk): без типа",
+    "word": "TODO(kk): Документ Word",
+    "pdf": "TODO(kk): PDF-документ",
+    "text": "TODO(kk): Текстовый файл",
+    "summary_text": "TODO(kk): {label} «{name}» ({size}). Содержание:",
+    "truncated": "TODO(kk): …[обрезано]",
+    "summary_image": "TODO(kk): Изображение «{name}» ({size}).",
+    "summary_image_dims": "TODO(kk): Изображение «{name}» ({width}×{height} px, {size}).",
+    "summary_binary": "TODO(kk): Файл «{name}» ({type}, {size}). Этот формат не разобран автоматически — пришлите .docx, .pdf, .txt или фото.",
+    "error": {
+      "read_failed": "TODO(kk): Не удалось прочитать файл.",
+      "too_big_parse": "TODO(kk): Файл слишком большой для разбора — отправьте его через WhatsApp.",
+      "too_big": "TODO(kk): Файл больше 8 МБ — приложите меньший или отправьте через WhatsApp.",
+      "image_format": "TODO(kk): Формат «{name}» не поддерживается — пришлите фото в JPG или PNG.",
+      "docx": "TODO(kk): Не удалось прочитать .docx («{reason}»). Сохраните как .docx/.txt и приложите снова.",
+      "docx_reason": "TODO(kk): ошибка",
+      "docx_no_document": "TODO(kk): В DOCX нет word/document.xml",
+      "docx_empty": "TODO(kk): Документ пустой или без читаемого текста",
+      "zip_method": "TODO(kk): Неподдерживаемое сжатие ZIP: {method}",
+      "no_decompression": "TODO(kk): DecompressionStream недоступен",
+      "pdf": "TODO(kk): Не удалось извлечь текст из PDF. Пришлите .docx или .txt — так надёжнее.",
+      "doc_old": "TODO(kk): Старый формат .doc не поддерживается. Сохраните файл как .docx или .txt."
+    }
+  },
+  "lang": {
+    "switcher_label": "Тілді таңдау / Выбор языка",
+    "kk": "Қаз",
+    "ru": "Рус",
+    "kk_full": "Қазақша",
+    "ru_full": "Русский"
+  }
+}

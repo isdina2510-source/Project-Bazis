@@ -1,0 +1,35 @@
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Данные: база, документы, загруженные картинки, резервные копии
+data/
+data-*/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+backups/
+.backup-*/
+*.bak
+images/uploads/*
+!images/uploads/.gitkeep
+
+# Журналы
+logs/
+*.log
+
+# Зависимости и встроенный Node
+node_modules/
+.tools/
+
+# Сборки и сгенерированное
+dist/
+dist-media/
+images/optimized/
+src/generated/
+deploy/generated/
+.e2e-totals/

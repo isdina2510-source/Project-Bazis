@@ -1,0 +1,21 @@
+# systemd-служба для Linux-сервера. Пути и пользователя поправьте под свой сервер, затем:
+#   sudo cp deploy/bazis.service /etc/systemd/system/bazis.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now bazis
+# Журнал: journalctl -u bazis -f
+[Unit]
+Description=Bazis site + CRM
+After=network.target
+
+[Service]
+Type=simple
+User=bazis
+WorkingDirectory=/opt/bazis
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+# server.js по SIGTERM дожидается текущих запросов (до 50 с)
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

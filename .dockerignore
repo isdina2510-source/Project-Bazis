@@ -1,0 +1,25 @@
+# Зависимости и сборка — ставятся и собираются внутри образа (node_modules с Windows в Linux не работают).
+node_modules/
+dist/
+dist-media/
+images/optimized/
+src/generated/
+
+# Данные, секреты и журналы — не в образ: данные живут в томах Docker, настройки приходят из .env (docker-compose.yml).
+.env
+.env.*
+data/
+data-*/
+images/uploads/
+logs/
+*.log
+.e2e-totals/
+.backup-*/
+deploy/generated/
+
+.tools/
+.git/
+*.bat
+Dockerfile
+docker-compose.yml
+.dockerignore
