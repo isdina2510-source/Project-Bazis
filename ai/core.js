@@ -88,7 +88,11 @@ function createAiCore({
 
   /** Промис завершается не позже сигнала, даже если провайдер сигнал игнорирует. */
   function untilAborted(promise, signal) {
-    if (signal.aborted) return Promise.reject(fromAbortReason(signal.reason));
+    if (signal.aborted) {
+      // Запрос к провайдеру уже запущен; его отказ после отмены никому не нужен, но без обработчика он завершил бы процесс.
+      promise.catch(() => {});
+      return Promise.reject(fromAbortReason(signal.reason));
+    }
     return new Promise((resolve, reject) => {
       const onAbort = () => reject(fromAbortReason(signal.reason));
       signal.addEventListener("abort", onAbort, { once: true });

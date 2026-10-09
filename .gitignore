@@ -22,6 +22,9 @@ images/uploads/*
 logs/
 *.log
 
+# Просьба остановить сервер от службы Windows (scripts/windows-service.ps1)
+server.stop
+
 # Зависимости и встроенный Node
 node_modules/
 .tools/

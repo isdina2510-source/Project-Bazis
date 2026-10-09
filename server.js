@@ -33,10 +33,17 @@ const { integrationProblems, contentProblems } = require("./config/production");
 const { createOrderGuard, loadOrderGuardConfig } = require("./antispam/order-guard");
 const { createNotifier, scrub } = require("./notify");
 const { createClientErrorsHandler } = require("./notify/client-errors");
+const { createFileSender } = require("./runtime/static-file");
+const { createHealthHandler } = require("./runtime/health");
+const { createShutdown, watchStopFile, createCrashHandler } = require("./runtime/shutdown");
+const { version: APP_VERSION } = require("./package.json");
 
 loadEnvFile(path.join(__dirname, ".env"));
 
-/** Журнал в logs/ (LOG_DIR); LOG_TO_FILE=0 — только консоль. --check-config файлов не создаёт. */
+/**
+ * Журнал в logs/ (LOG_DIR); LOG_TO_FILE=0 — только консоль. --check-config файлов не создаёт.
+ * Отключение и восстановление журнала — оповещение; setImmediate: notifier создаётся ниже.
+ */
 const fileLog =
   process.env.LOG_TO_FILE === "0" || process.argv.includes("--check-config")
     ? null
@@ -44,6 +51,7 @@ const fileLog =
         dir: path.resolve(__dirname, process.env.LOG_DIR || "logs"),
         keepDays: Number(process.env.LOG_KEEP_DAYS) || 14,
         maxBytes: (Number(process.env.LOG_MAX_MB) || 20) * 1024 * 1024,
+        onStatus: (status, text) => setImmediate(() => notifier.alert("file_log:" + status, text)),
       });
 
 const PORT = Number(process.env.PORT || 8787);
@@ -456,7 +464,13 @@ function saveImageBuffer(buffer, mime) {
   if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   const fileName = "img_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8) + ext;
   const full = path.join(UPLOADS_DIR, fileName);
-  fs.writeFileSync(full, buffer);
+  try {
+    fs.writeFileSync(full, buffer);
+  } catch (err) {
+    // ENOSPC и т.п. могут оставить недописанный файл — он никому не принадлежит.
+    deleteUploadIfOwned("images/uploads/" + fileName);
+    throw err;
+  }
   return "images/uploads/" + fileName;
 }
 
@@ -604,21 +618,33 @@ async function localizeExternalImages(store) {
   }
 }
 
-function sendProductError(res, err, req) {
-  const code = (err && err.code) || "invalid_product";
-  sendJson(res, productErrorStatus(code), {
-    error: code,
-    message: PRODUCT_ERROR_MESSAGES[code] || "Некорректные данные товара",
-  }, req);
-}
+/**
+ * Ошибки, о которых менеджеру можно сказать «исправьте данные»: проверка полей (buildProductFromBody),
+ * картинка (saveImageBuffer, security/remote-image.js) и остатки в незакрытых заказах (db/store.js).
+ */
+const PRODUCT_ERROR_STATUS = {
+  title_required: 400,
+  description_required: 400,
+  invalid_price: 400,
+  invalid_stock: 400,
+  invalid_image: 400,
+  invalid_image_url: 400,
+  image_host_blocked: 400,
+  image_fetch_failed: 400,
+  image_too_large: 413,
+  stock_held: 409,
+  product_reserved: 409,
+};
 
-function productErrorStatus(code) {
-  if (code === "title_required" || code === "description_required" || code === "invalid_price" || code === "invalid_image") {
-    return 400;
-  }
-  if (code === "image_too_large") return 413;
-  if (code === "stock_held" || code === "product_reserved") return 409;
-  return 400;
+/**
+ * Известная ошибка — ответ 4xx с понятным текстом. Любая другая (ENOSPC, EACCES, ошибка в коде) пробрасывается
+ * в глобальный обработчик: 500, журнал с requestId и оповещение — а не «Некорректные данные товара».
+ * Загруженный в этом запросе файл вызывающий удаляет до вызова.
+ */
+function sendProductError(res, err, req) {
+  const code = err && err.code;
+  if (typeof code !== "string" || !Object.hasOwn(PRODUCT_ERROR_STATUS, code)) throw err;
+  sendJson(res, PRODUCT_ERROR_STATUS[code], { error: code, message: PRODUCT_ERROR_MESSAGES[code] }, req);
 }
 
 function normalizePhone(raw) {
@@ -721,6 +747,11 @@ function assignRequestId(req, res) {
   const fromProxy = TRUST_PROXY ? String(req.headers["x-request-id"] || "").trim() : "";
   req.id = REQUEST_ID_RE.test(fromProxy) ? fromProxy : crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   res.setHeader("X-Request-Id", req.id);
+}
+
+/** Путь запроса для журнала и оповещений: без строки запроса — в ней бывают имя, телефон, поиск по клиентам. */
+function requestPath(req) {
+  return String((req && req.url) || "/").split(/[?#]/)[0];
 }
 
 /** Ответы от 16 КБ сжимаем, если клиент принимает gzip (за прокси без сжатия — тоже быстрее). */
@@ -1628,24 +1659,10 @@ function isFile(filePath) {
   return !!filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile();
 }
 
-function sendFile(res, filePath, cacheControl) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (!MIME[ext]) {
-    sendText(res, 403, "Forbidden");
-    return;
-  }
-  const headers = { "Content-Type": MIME[ext], "X-Content-Type-Options": "nosniff" };
-  if (cacheControl) headers["Cache-Control"] = cacheControl;
-  const stream = fs.createReadStream(filePath);
-  stream.on("error", () => {
-    if (!res.headersSent) sendText(res, 404, "Not found");
-    else res.destroy();
-  });
-  stream.once("open", () => {
-    res.writeHead(200, headers);
-    stream.pipe(res);
-  });
-}
+const sendFile = createFileSender({
+  mime: MIME,
+  onServerError: (req, err) => notifier.serverError(req.method, requestPath(req), err),
+});
 
 const SITE_LANGS = ["kk", "ru"];
 const DEFAULT_SITE_LANG = "kk";
@@ -1683,12 +1700,12 @@ function nearestSection(rest) {
 
 const SECTION_HTML = { "/shop": "shop.html", "/articles": "articles.html" };
 
-function sendLangPage(res, distDir, lang, section) {
+function sendLangPage(req, res, distDir, lang, section) {
   const name = SECTION_HTML[section] || "index.html";
   const localized = lang ? path.join(distDir, lang, name) : "";
   const filePath = isFile(localized) ? localized : path.join(distDir, isFile(path.join(distDir, name)) ? name : "index.html");
   res.setHeader("Content-Language", lang || DEFAULT_SITE_LANG);
-  sendFile(res, filePath, "no-cache");
+  sendFile(req, res, filePath, "no-cache");
 }
 
 function redirect(res, status, location, headers = {}) {
@@ -1711,7 +1728,7 @@ function serveStatic(req, res, url) {
       sendText(res, 404, "Not found");
       return;
     }
-    sendFile(res, filePath);
+    sendFile(req, res, filePath);
     return;
   }
 
@@ -1737,7 +1754,7 @@ function serveStatic(req, res, url) {
       redirect(res, rest === "" || rest === "/index.html" || rest === "/shop.html" ? 301 : 302, canonical + url.search);
       return;
     }
-    sendLangPage(res, distDir, lang, section);
+    sendLangPage(req, res, distDir, lang, section);
     return;
   }
 
@@ -1749,7 +1766,7 @@ function serveStatic(req, res, url) {
     }
     if (isFile(filePath)) {
       const immutable = pathname.startsWith("/assets/");
-      sendFile(res, filePath, immutable ? "public, max-age=31536000, immutable" : "no-cache");
+      sendFile(req, res, filePath, immutable ? "public, max-age=31536000, immutable" : "no-cache");
       return;
     }
     // Файл с расширением не найден — 404, а не SPA-страница.
@@ -1763,7 +1780,7 @@ function serveStatic(req, res, url) {
   // из cookie / Accept-Language, ботам — x-default без редиректа (там canonical и hreflang).
   const section = nearestSection(pathname);
   if (BOT_UA.test(String(req.headers["user-agent"] || ""))) {
-    sendLangPage(res, distDir, "", section);
+    sendLangPage(req, res, distDir, "", section);
     return;
   }
   const lang = pickSiteLang(req);
@@ -1852,7 +1869,7 @@ const AI_OFFLINE_REASONS = {
 
 function notifyAiError(err, req) {
   if (!(err instanceof AiError)) {
-    notifier.serverError(req.method, req.url, err);
+    notifier.serverError(req.method, requestPath(req), err);
     return;
   }
   const reason = AI_OFFLINE_REASONS[err.code];
@@ -1861,7 +1878,18 @@ function notifyAiError(err, req) {
   notifier.alert("ai:" + err.code + ":" + err.status, "ИИ-консультант перешёл в офлайн-режим: " + reason(err) + detail);
 }
 
-const server = http.createServer(async (req, res) => {
+const handleHealth = createHealthHandler({
+  ping: () => {
+    if (!store) throw new Error("база ещё не открыта (сервер запускается)");
+    return store.ping();
+  },
+  version: APP_VERSION,
+  sendJson,
+  clientIp,
+  checkRateLimit,
+});
+
+async function handleRequest(req, res) {
   assignRequestId(req, res);
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -1871,6 +1899,10 @@ const server = http.createServer(async (req, res) => {
     const disabledSite = disabledSiteForHost(req);
     if (disabledSite) {
       sendDisabledSite(req, res, url, disabledSite);
+      return;
+    }
+    if (url.pathname === "/api/health") {
+      handleHealth(req, res);
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -1900,10 +1932,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 503, { error: "db_corrupt", message: "Файл данных на сервере повреждён. Сообщите администратору." }, req);
       return;
     }
-    console.error(`[${req.id}] ${req.method} ${req.url}:`, err);
-    notifier.serverError(req.method, req.url, err);
+    console.error(`[${req.id}] ${req.method} ${requestPath(req)}:`, err);
+    notifier.serverError(req.method, requestPath(req), err);
     sendJson(res, 500, { error: "server_error", message: "Внутренняя ошибка сервера" }, req);
   }
+}
+
+/** Сбой в самом обработчике ошибок не должен стать необработанным отказом промиса (он завершает процесс). */
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((err) => {
+    console.error(`[${req.id}] ${req.method} ${requestPath(req)}: ошибка при обработке ошибки:`, err);
+    res.destroy();
+  });
 });
 
 /** Код выхода «порт занят»: run-server.bat не перезапускает сервер сразу, а ждёт дольше. */
@@ -1932,9 +1972,13 @@ server.listen(PORT, HOST, () => {
     migrateInlineImages(store);
     documents = createDocuments({ store, rootDir: ROOT, dataDir: DATA_DIR, notifier });
   } catch (err) {
-    console.error(err.message);
+    // Стек обязателен: по одному тексту не найти, в какой миграции или проверке упал запуск.
+    console.error("Сервер не запустился:", (err && err.stack) || err);
     notifier.failed("ошибка запуска", err);
-    notifier.flush().then(() => process.exit(1));
+    notifier.flush().then(
+      () => process.exit(1),
+      () => process.exit(1)
+    );
     return;
   }
   console.log(`Базис CRM: http://127.0.0.1:${PORT}`);
@@ -1983,40 +2027,23 @@ server.listen(PORT, HOST, () => {
   setTimeout(() => {
     localizeExternalImages(store).catch((err) => console.warn("Перенос картинок товаров:", err.message));
   }, 3000).unref();
+  // Только после успешного запуска: экземпляр, упавший на занятом порту, не должен удалить чужую просьбу.
+  watchStopFile(STOP_FILE, () => shutdown(path.basename(STOP_FILE)));
 });
 
-/** Не принимаем новые соединения и дожидаемся текущих запросов (в т.ч. к ИИ). */
-function shutdown(signal) {
-  console.log(`${signal}: останавливаю сервер...`);
-  server.close(async () => {
-    if (documents) await documents.close().catch(() => {});
-    if (store) store.close();
-    if (fileLog) fileLog.close();
-    process.exit(0);
-  });
-  server.closeIdleConnections();
-  setTimeout(() => process.exit(0), 50000).unref();
-}
+/** Файл-просьба об остановке от службы Windows (scripts/windows-service.ps1): в Windows нет SIGTERM. */
+const STOP_FILE = path.join(ROOT, "server.stop");
+
+const shutdown = createShutdown({
+  server,
+  closeDocuments: () => documents && documents.close(),
+  closeStore: () => store && store.close(),
+  closeLog: () => fileLog && fileLog.close(),
+});
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
-process.on("unhandledRejection", (err) => {
-  console.error("Необработанная ошибка:", err);
-  notifier.alert(
-    "unhandled:" + scrub(err && err.message, sender.hideSecrets).slice(0, 80),
-    "Необработанная ошибка в фоне: " + scrub(err && err.message ? err.message : err, sender.hideSecrets)
-  );
-});
-/** После такой ошибки состояние процесса не гарантировано: закрываем базу и выходим, run-server.bat поднимет сервер заново. */
-let crashing = false;
-process.on("uncaughtException", (err) => {
-  console.error(`[${new Date().toISOString()}] Сервер упал:`, err);
-  try {
-    if (store) store.close();
-  } catch {
-    // база могла быть уже закрыта
-  }
-  if (crashing) process.exit(1);
-  crashing = true;
-  notifier.failed("сбой процесса", err);
-  notifier.flush(3000).then(() => process.exit(1));
-});
+
+const crash = createCrashHandler({ notifier, closeStore: () => store && store.close() });
+// Отказ промиса без обработчика — такая же ошибка в коде, как исключение: состояние процесса не гарантировано.
+process.on("unhandledRejection", (err) => crash("необработанный отказ промиса", err));
+process.on("uncaughtException", (err) => crash("сбой процесса", err));

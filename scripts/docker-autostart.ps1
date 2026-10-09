@@ -2,6 +2,8 @@
 #   «Bazis Docker» — при входе в Windows: запускает Docker Desktop, поднимает сайт и ждёт, пока он станет healthy;
 #   «Bazis Docker Watchdog» — каждые 5 минут: если Docker Desktop закрылся или упал, запускает его снова
 #     (контейнер поднимается сам — restart: unless-stopped; остановленный вручную через docker compose stop/down не трогаем).
+#     Если контейнер работает, но HEALTHCHECK (GET /api/health) два раза подряд сообщает unhealthy — docker restart,
+#     запись в журнал и оповещение владельцу (notify/cli.js). Сам Docker unhealthy-контейнер не перезапускает.
 # Docker Desktop работает только при вошедшем пользователе: чтобы сайт поднимался после перезагрузки без человека,
 # включите автовход (setup-autologon.bat) — тогда после автовхода задача сразу блокирует экран.
 # Вызывается из install-docker-autostart.bat и uninstall-docker-autostart.bat.
@@ -18,6 +20,9 @@ $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root "docker-compose.yml"
 $LogDir = Join-Path $Root "logs"
 $LogFile = Join-Path $LogDir "docker-autostart.log"
+# Сколько проверок подряд (раз в 5 минут) контейнер был unhealthy; файл — потому что каждая проверка — новый процесс.
+$UnhealthyFile = Join-Path $LogDir "docker-unhealthy.txt"
+$UnhealthyLimit = 2
 $EngineWaitSeconds = 300
 $HealthWaitSeconds = 180
 
@@ -32,7 +37,9 @@ function Write-Log([string]$Message) {
 }
 
 # Планировщик запускает задачу с PATH на момент входа — docker.exe ищем и по известным путям установки.
+# BAZIS_DOCKER_EXE — подмена docker для тестов (test/docker-watchdog.test.js).
 function Get-DockerExe {
+  if ($env:BAZIS_DOCKER_EXE) { return $env:BAZIS_DOCKER_EXE }
   $candidates = @(
     (Join-Path $env:LOCALAPPDATA "Programs\DockerDesktop\resources\bin\docker.exe"),
     (Join-Path $env:ProgramFiles "Docker\Docker\resources\bin\docker.exe")
@@ -85,6 +92,59 @@ function Get-SiteContainer {
   $ps = Invoke-Docker compose -f $ComposeFile ps -a -q bazis
   if ($ps.Code -ne 0 -or -not $ps.Output) { return $null }
   ($ps.Output -split "\s+")[0]
+}
+
+function Get-UnhealthyCount {
+  if (-not (Test-Path $UnhealthyFile)) { return 0 }
+  $value = 0
+  if ([int]::TryParse((Get-Content $UnhealthyFile -Raw).Trim(), [ref]$value)) { return $value }
+  0
+}
+
+function Set-UnhealthyCount([int]$Count) {
+  if ($Count -le 0) { Remove-Item -LiteralPath $UnhealthyFile -Force -ErrorAction SilentlyContinue; return }
+  if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
+  Set-Content -Path $UnhealthyFile -Value $Count -Encoding ASCII
+}
+
+# Оповещение через модуль notify в одноразовом контейнере: переменные Telegram он берёт из .env (env_file),
+# этот скрипт .env не читает. Сбой оповещения только пишется в журнал.
+function Send-OwnerAlert([string]$Text) {
+  $result = Invoke-Docker compose -f $ComposeFile run --rm --no-deps -T bazis node notify/cli.js $Text
+  if ($result.Code -eq 0) { Write-Log "Оповещение владельцу: $($result.Output)" }
+  else { Write-Log "Оповещение владельцу не отправлено (код $($result.Code)): $($result.Output)" }
+}
+
+# Работающий контейнер, который HEALTHCHECK считает unhealthy, Docker не перезапускает (restart: unless-stopped
+# срабатывает только при выходе процесса). Перезапускаем сами после $UnhealthyLimit проверок подряд.
+function Watch-Health {
+  $container = Get-SiteContainer
+  if (-not $container) { Set-UnhealthyCount 0; return }
+  $state = (Invoke-Docker inspect $container --format "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}").Output
+  $parts = "$state" -split "\s+"
+  if ($parts[0] -ne "running") { Set-UnhealthyCount 0; return }
+  $health = if ($parts.Count -gt 1) { $parts[1] } else { "" }
+  if ($health -ne "unhealthy") {
+    if ((Get-UnhealthyCount) -gt 0 -and $health -eq "healthy") { Write-Log "Сайт снова healthy" }
+    if ($health -ne "starting") { Set-UnhealthyCount 0 }
+    return
+  }
+  $count = (Get-UnhealthyCount) + 1
+  if ($count -lt $UnhealthyLimit) {
+    Set-UnhealthyCount $count
+    Write-Log "Сайт unhealthy (проверка $count из $UnhealthyLimit): GET /api/health не отвечает 200. Подробности: docker inspect $container"
+    return
+  }
+  Set-UnhealthyCount 0
+  Write-Log "Сайт unhealthy $UnhealthyLimit проверки подряд — перезапускаю контейнер $container"
+  $restart = Invoke-Docker restart $container
+  if ($restart.Code -ne 0) {
+    Write-Log "ОШИБКА docker restart: $($restart.Output)"
+    Send-OwnerAlert "Сайт не отвечает на проверку здоровья, и перезапустить контейнер не удалось: $($restart.Output)"
+    return
+  }
+  Write-Log "Контейнер перезапущен"
+  Send-OwnerAlert "Сайт не отвечал на проверку здоровья (/api/health) 10 минут — контейнер перезапущен. Причина — в docker compose logs."
 }
 
 function Wait-Healthy([string]$Container) {
@@ -188,6 +248,7 @@ switch ($Action) {
     try {
       $script:Docker = Get-DockerExe
       if (-not (Start-Engine)) { exit 1 }
+      Watch-Health
     } catch {
       Write-Log "ОШИБКА: $($_.Exception.Message)"
       exit 1

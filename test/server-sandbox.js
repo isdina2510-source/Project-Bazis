@@ -9,13 +9,14 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
-const SERVER_DIRS = ["ai", "antispam", "auth", "config", "db", "documents", "logging", "notify", "security", "shared"];
+const SERVER_DIRS = ["ai", "antispam", "auth", "config", "db", "documents", "logging", "notify", "runtime", "security", "shared"];
 const ADMIN_PASSWORD = "sandbox-admin-password-1";
 
 /** @param {Record<string, string>} [files] дополнительные файлы: путь относительно корня копии → текст */
 function createSandbox(files = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bazis-test-"));
   fs.copyFileSync(path.join(ROOT, "server.js"), path.join(dir, "server.js"));
+  fs.copyFileSync(path.join(ROOT, "package.json"), path.join(dir, "package.json"));
   for (const name of SERVER_DIRS) {
     fs.cpSync(path.join(ROOT, name), path.join(dir, name), {
       recursive: true,
@@ -97,7 +98,10 @@ async function startServer(sandbox, env = {}, timeoutMs = 20000) {
   });
   return {
     url: `http://127.0.0.1:${port}`,
+    port,
     output: () => output,
+    /** Код выхода, когда сервер завершится сам. */
+    exited,
     async stop() {
       if (child.exitCode === null) child.kill();
       await exited;

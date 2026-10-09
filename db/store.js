@@ -1371,6 +1371,7 @@ function createStore(options) {
   backup();
   const backupTimer = setInterval(backup, BACKUP_INTERVAL_MS);
   backupTimer.unref();
+  const pingStmt = db.prepare("SELECT 1 AS ok");
 
   return {
     path: dbPath,
@@ -1384,6 +1385,8 @@ function createStore(options) {
     backup,
     /** При этом запуске в базу добавлены заказы из старых JSON-файлов — их нужно привязать к карточкам. */
     importedOrders: () => importedOrders,
+    /** База открыта и отвечает (для GET /api/health): без обращения к таблицам. */
+    ping: () => pingStmt.get().ok === 1,
     close() {
       clearInterval(backupTimer);
       db.close();

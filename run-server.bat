@@ -39,6 +39,14 @@ if defined NEED_BUILD (
   )
 )
 
+rem Защита от цикла перезапусков: сервер упал BAZIS_CRASH_LIMIT раз за BAZIS_CRASH_WINDOW с — пауза BAZIS_CRASH_PAUSE с.
+rem Переменные окружения переопределяют значения только для тестов (test/run-server-bat.test.js).
+if not defined BAZIS_CRASH_LIMIT set "BAZIS_CRASH_LIMIT=5"
+if not defined BAZIS_CRASH_WINDOW set "BAZIS_CRASH_WINDOW=120"
+if not defined BAZIS_CRASH_PAUSE set "BAZIS_CRASH_PAUSE=300"
+if not defined BAZIS_RESTART_WAIT set "BAZIS_RESTART_WAIT=5"
+set "CRASHES="
+
 :loop
 call :rotate
 call :say "Запуск сервера" "server start"
@@ -63,7 +71,7 @@ if "%CODE%"=="5" (
   exit /b 5
 )
 
-set "WAIT=5"
+set "WAIT=%BAZIS_RESTART_WAIT%"
 if "%CODE%"=="3" (
   if /i not "%MODE%"=="service" (
     call :say "Порт уже занят: сайт запущен в другом окне или службой. Это окно можно закрыть." "port in use"
@@ -71,10 +79,39 @@ if "%CODE%"=="3" (
   )
   set "WAIT=30"
 )
+call :crashcheck
+if not errorlevel 1 goto restart
+set "CRASHES="
+call :say "Сервер упал %BAZIS_CRASH_LIMIT% раз за %BAZIS_CRASH_WINDOW% с и не может работать - причина в сообщениях выше. Пауза %BAZIS_CRASH_PAUSE% с, затем новые попытки." "server crashed %BAZIS_CRASH_LIMIT% times within %BAZIS_CRASH_WINDOW% s - pausing %BAZIS_CRASH_PAUSE% s before next attempts"
+set /a "PAUSE_PINGS=BAZIS_CRASH_PAUSE+1"
+ping -n %PAUSE_PINGS% 127.0.0.1 >nul
+call :say "Пауза окончена - снова запускаю сервер." "pause over, starting again"
+goto loop
+
+:restart
 call :say "Сервер остановился с кодом %CODE%. Перезапуск через %WAIT% с..." "server exited with code %CODE%, restart in %WAIT% s"
 rem ping вместо timeout: timeout не работает без консоли (в службе).
 ping -n %WAIT% 127.0.0.1 >nul
 goto loop
+
+:crashcheck
+rem CRASHES — время падений в секундах за последние BAZIS_CRASH_WINDOW с; код 1 — падений набралось BAZIS_CRASH_LIMIT.
+set "NOW="
+for /f %%T in ('node -e "process.stdout.write(String(Math.floor(Date.now()/1000)))"') do set "NOW=%%T"
+if not defined NOW exit /b 0
+set "RECENT="
+set "COUNT=0"
+for %%T in (%CRASHES% %NOW%) do call :crashkeep %%T
+set "CRASHES=%RECENT%"
+if %COUNT% GEQ %BAZIS_CRASH_LIMIT% exit /b 1
+exit /b 0
+
+:crashkeep
+set /a "AGE=NOW-%~1"
+if %AGE% GTR %BAZIS_CRASH_WINDOW% exit /b 0
+set "RECENT=%RECENT% %~1"
+set /a "COUNT+=1"
+exit /b 0
 
 :run
 rem call — иначе npm.cmd не вернёт управление в этот файл.

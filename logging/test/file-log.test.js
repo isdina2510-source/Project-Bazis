@@ -85,3 +85,57 @@ test("сбой записи не роняет процесс: журнал от�
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /Журнал в файл отключён/);
 });
+
+test("MED-06: после отключения файл открывается снова через 5 минут; об отключении и восстановлении — по одной строке и хуку", (t) => {
+  const dir = tempDir(t);
+  const logs = path.join(dir, "logs");
+  fs.writeFileSync(logs, "файл вместо папки");
+  let current = new Date(2026, 9, 7, 12, 0, 0);
+  const warnings = [];
+  const statuses = [];
+  const log = createFileLog({
+    dir: logs,
+    now: () => current,
+    console: { error: (msg) => warnings.push(msg) },
+    onStatus: (status, text) => statuses.push([status, text]),
+  });
+  log.write("INFO", ["раз"]);
+  log.write("INFO", ["два"]);
+  current = new Date(2026, 9, 7, 12, 4, 59);
+  log.write("INFO", ["через 4:59 — ещё рано"]);
+  assert.deepEqual(statuses.map(([status]) => status), ["disabled"]);
+  assert.equal(warnings.length, 1);
+
+  current = new Date(2026, 9, 7, 12, 5, 0);
+  log.write("INFO", ["через 5 минут, но диск всё ещё недоступен"]);
+  assert.equal(statuses.length, 1, "повторная неудача — без новых сообщений");
+
+  fs.rmSync(logs);
+  current = new Date(2026, 9, 7, 12, 9, 0);
+  log.write("INFO", ["рано: прошло 4 минуты с прошлой попытки"]);
+  current = new Date(2026, 9, 7, 12, 10, 0);
+  log.write("INFO", ["снова пишется"]);
+  log.close();
+
+  assert.deepEqual(statuses.map(([status]) => status), ["disabled", "restored"]);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[1], /Журнал в файл снова работает.*не записано строк: 5/);
+  const text = fs.readFileSync(path.join(logs, "server-2026-10-07.log"), "utf8");
+  assert.match(text, /WARN  Журнал в файл снова работает; пока он был отключён, не записано строк: 5\n.*INFO  снова пишется\n$/);
+});
+
+test("MED-06: с началом нового дня журнал пробует открыть файл, не дожидаясь 5 минут", (t) => {
+  const dir = tempDir(t);
+  const logs = path.join(dir, "logs");
+  fs.writeFileSync(logs, "файл вместо папки");
+  let current = new Date(2026, 9, 7, 23, 59, 0);
+  const statuses = [];
+  const log = createFileLog({ dir: logs, now: () => current, console: silent, onStatus: (status) => statuses.push(status) });
+  log.write("INFO", ["вечер"]);
+  fs.rmSync(logs);
+  current = new Date(2026, 9, 8, 0, 1, 0);
+  log.write("INFO", ["утро"]);
+  log.close();
+  assert.deepEqual(statuses, ["disabled", "restored"]);
+  assert.match(fs.readFileSync(path.join(logs, "server-2026-10-08.log"), "utf8"), /утро/);
+});

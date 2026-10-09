@@ -39,6 +39,7 @@ COPY db ./db
 COPY documents ./documents
 COPY logging ./logging
 COPY notify ./notify
+COPY runtime ./runtime
 COPY security ./security
 COPY shared ./shared
 COPY public ./public
@@ -49,6 +50,8 @@ COPY --from=build /app/images ./images
 RUN mkdir -p data logs images/uploads && chown -R node:node data logs images/uploads
 USER node
 EXPOSE 8787
+# /api/health отвечает 200, только если база открыта и отвечает на SELECT 1. unhealthy Docker сам не лечит —
+# контейнер перезапускает watchdog (scripts/docker-autostart.ps1 watch).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:8787/api/ai').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8787/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["node", "server.js"]

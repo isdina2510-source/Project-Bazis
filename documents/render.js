@@ -60,7 +60,7 @@ function createRenderer(options = {}) {
         reject(new Error("Сборка PDF заняла больше " + Math.round(timeoutMs / 1000) + " с"));
         if (worker === current) {
           worker = null;
-          current.terminate();
+          current.terminate().catch((err) => console.error("PDF: не удалось остановить зависший поток:", err));
           failAll(new Error("Поток сборки PDF перезапущен после зависания"));
         }
       }, timeoutMs);

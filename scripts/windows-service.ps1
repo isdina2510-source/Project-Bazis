@@ -2,14 +2,19 @@
 # от имени SYSTEM — без входа в систему и без открытого окна. Вызывается из install-service.bat,
 # uninstall-service.bat и update-site.bat.
 param(
-  [ValidateSet("install", "uninstall", "restart", "status")]
-  [string]$Action = "status"
+  [ValidateSet("install", "uninstall", "restart", "stop", "status")]
+  [string]$Action = "status",
+  # Как stop_grace_period в docker-compose.yml: сервер дожидается текущих запросов (ответ ИИ — до 45 с).
+  [int]$StopTimeoutSeconds = 60,
+  # Другое имя задачи — только для тестов (test/windows-service-stop.test.js), чтобы не трогать настоящую службу.
+  [string]$TaskName = "Bazis Site"
 )
 $ErrorActionPreference = "Stop"
 
-$TaskName = "Bazis Site"
 $Root = Split-Path -Parent $PSScriptRoot
 $Runner = Join-Path $Root "run-server.bat"
+$StopFile = Join-Path $Root "server.stop"
+$RunLog = Join-Path $Root "server-run.log"
 
 function Get-SitePort {
   $port = 8787
@@ -39,19 +44,40 @@ function Get-Task {
   Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 }
 
-# Завершение задачи останавливает run-server.bat; node, слушающий порт сайта, добиваем отдельно,
-# иначе новый запуск упрётся в занятый порт.
+# Строка в журнал службы. run-server.bat пишет туда echo в кодировке консоли, поэтому здесь тоже только ASCII.
+function Write-RunLog([string]$Message) {
+  Add-Content -Path $RunLog -Value "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message" -Encoding ASCII
+}
+
+function Get-SiteNodes {
+  $owners = Get-NetTCPConnection -LocalPort (Get-SitePort) -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique
+  @($owners | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | Where-Object { $_.ProcessName -eq "node" })
+}
+
+# Штатная остановка, как SIGTERM в Docker: файл server.stop просит сервер дождаться текущих запросов, закрыть базу
+# и выйти с кодом 0 — тогда и run-server.bat завершается, не перезапуская его. Сервер, не успевший за
+# $StopTimeoutSeconds, завершаем принудительно (с записью в журнал). Задачу снимаем после: node её может пережить,
+# а новый запуск упёрся бы в занятый порт.
 function Stop-Site {
-  if (Get-Task) { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
-  $port = Get-SitePort
-  for ($i = 0; $i -lt 10; $i++) {
-    $owners = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
-      Select-Object -ExpandProperty OwningProcess -Unique
-    $nodes = @($owners | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | Where-Object { $_.ProcessName -eq "node" })
-    if (-not $nodes.Count) { return }
-    if ($i -eq 5) { $nodes | Stop-Process -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
+  $nodes = Get-SiteNodes
+  if ($nodes.Count) {
+    Set-Content -Path $StopFile -Value "stop" -Encoding ASCII
+    $deadline = (Get-Date).AddSeconds($StopTimeoutSeconds)
+    while ($nodes.Count -and (Get-Date) -lt $deadline) {
+      Start-Sleep -Milliseconds 500
+      $nodes = Get-SiteNodes
+    }
+    if ($nodes.Count) {
+      $ids = ($nodes | ForEach-Object { $_.Id }) -join ", "
+      Write-RunLog "stop: server did not exit within $StopTimeoutSeconds s, killing node (pid $ids)"
+      Write-Host "Сервер не остановился за $StopTimeoutSeconds с — завершаю node принудительно (pid $ids)."
+      $nodes | Stop-Process -Force -ErrorAction SilentlyContinue
+      for ($i = 0; $i -lt 10 -and (Get-SiteNodes).Count; $i++) { Start-Sleep -Seconds 1 }
+    }
+    Remove-Item -LiteralPath $StopFile -Force -ErrorAction SilentlyContinue
   }
+  if (Get-Task) { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
 }
 
 switch ($Action) {
@@ -88,6 +114,10 @@ switch ($Action) {
     Stop-Site
     Start-ScheduledTask -TaskName $TaskName
     Write-Host "Служба «$TaskName» перезапущена."
+  }
+  "stop" {
+    Stop-Site
+    Write-Host "Сервер остановлен."
   }
   "status" {
     $task = Get-Task

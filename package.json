@@ -18,7 +18,7 @@
     "preview": "npm run build && node server.js",
     "start": "node server.js",
     "server": "node server.js",
-    "test": "node --test \"ai/test/*.test.js\" \"antispam/test/*.test.js\" \"auth/test/*.test.js\" \"config/test/*.test.js\" \"db/test/*.test.js\" \"documents/test/*.test.js\" \"logging/test/*.test.js\" \"notify/test/*.test.js\" \"security/test/*.test.js\" \"test/*.test.js\" && vitest run",
+    "test": "node --test \"ai/test/*.test.js\" \"antispam/test/*.test.js\" \"auth/test/*.test.js\" \"config/test/*.test.js\" \"db/test/*.test.js\" \"documents/test/*.test.js\" \"logging/test/*.test.js\" \"notify/test/*.test.js\" \"runtime/test/*.test.js\" \"security/test/*.test.js\" \"test/*.test.js\" && vitest run",
     "test:web": "vitest run",
     "check:prod": "node server.js --check-config --production",
     "deploy:config": "node scripts/deploy-config.mjs",
