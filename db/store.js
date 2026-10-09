@@ -298,10 +298,11 @@ function newClientId() {
  *   normalizeProduct: (raw: object) => object,
  *   defaultProducts: object[],
  *   log?: Pick<Console, "log" | "warn" | "error">,
+ *   onBackupError?: (err: Error) => void,
  * }} options
  */
 function createStore(options) {
-  const { dataDir, normalizePhone, normalizeProduct, defaultProducts } = options;
+  const { dataDir, normalizePhone, normalizeProduct, defaultProducts, onBackupError } = options;
   /** Итог заказа строкой с учётом скидок и доставки; без функции total_text после создания не меняется. */
   const orderTotalText = typeof options.orderTotalText === "function" ? options.orderTotalText : null;
   const log = options.log || console;
@@ -1363,6 +1364,7 @@ function createStore(options) {
       }
     } catch (err) {
       log.error("Не удалось сделать резервную копию базы:", err.message);
+      if (typeof onBackupError === "function") onBackupError(err);
     }
   }
 

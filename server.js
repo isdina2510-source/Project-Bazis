@@ -13,7 +13,7 @@ const zlib = require("zlib");
 const { URL } = require("url");
 const { DEFAULT_PRODUCTS, CATEGORIES, CART_RULES } = require("./shared/catalog.json");
 const SITES_CONFIG = require("./shared/sites.json");
-const { createAi, createAiHttpHandler } = require("./ai");
+const { createAi, createAiHttpHandler, AiError } = require("./ai");
 const { createStore } = require("./db/store");
 const { orderTotalText, orderTotalsSummary } = require("./documents/money");
 const { fetchRemoteImage } = require("./security/remote-image");
@@ -28,6 +28,7 @@ const { loadEnvFile } = require("./config/env");
 const { resolveSites, isLocalHostname } = require("./config/sites");
 const { parseTrustProxy, isProxied, clientAddress, forwardedProto } = require("./config/proxy");
 const { createOrderGuard, loadOrderGuardConfig } = require("./antispam/order-guard");
+const { createNotifier, scrub } = require("./notify");
 
 loadEnvFile(path.join(__dirname, ".env"));
 
@@ -1159,7 +1160,10 @@ async function handleOrdersApi(req, res, orderId, url) {
 
       return { status: 201, body: store.orders.insert(created) };
     }));
-    if (result.status === 201) orderGuard.accepted({ phone: limitKey, fingerprint, orderId: newOrderId });
+    if (result.status === 201) {
+      orderGuard.accepted({ phone: limitKey, fingerprint, orderId: newOrderId });
+      notifier.order(result.body);
+    }
     sendJson(res, result.status, result.body, req);
     return;
   }
@@ -1694,6 +1698,12 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 let store = null;
 let documents = null;
 const sender = createSender({ env: process.env });
+const crmSite = SITES.find((site) => site.admin) || SITES[0];
+const notifier = createNotifier({
+  sender,
+  stateFile: path.join(DATA_DIR, "notify-state.json"),
+  crmUrl: (crmSite.url || `http://${[...crmSite.hosts][0]}:${PORT}`) + "/admin.html",
+});
 const documentsHttp = createDocumentsHttpHandler(() => documents, sender, {
   sendJson,
   readJsonObject,
@@ -1729,7 +1739,32 @@ const handleAiApi = createAiHttpHandler(ai, {
   checkRateLimit,
   requireAdmin,
   rateLimit: { limit: CHAT_RATE_LIMIT, windowMs: CHAT_RATE_WINDOW_MS },
+  onError: notifyAiError,
 });
+
+/** Ошибки, после которых ИИ-консультант отвечает посетителям офлайн-ботом по ключевым словам. */
+const AI_OFFLINE_REASONS = {
+  ai_not_configured: () => "не задан ключ ИИ (OPENAI_API_KEY в .env)",
+  ai_budget_exceeded: () => "исчерпан суточный лимит токенов (AI_DAILY_TOKENS)",
+  ai_unavailable: () => "ИИ временно отключён после серии ошибок провайдера",
+  ai_upstream_error: (err) =>
+    err.status === 401 || err.status === 403
+      ? `провайдер отклонил ключ (HTTP ${err.status}) — проверьте OPENAI_API_KEY`
+      : err.status === 402 || err.status === 429
+        ? `лимит или баланс у провайдера ИИ (HTTP ${err.status})`
+        : `ошибка провайдера ИИ (HTTP ${err.status})`,
+};
+
+function notifyAiError(err, req) {
+  if (!(err instanceof AiError)) {
+    notifier.serverError(req.method, req.url, err);
+    return;
+  }
+  const reason = AI_OFFLINE_REASONS[err.code];
+  if (!reason) return;
+  const detail = err.detail ? "\nОтвет провайдера: " + scrub(err.detail, sender.hideSecrets).slice(0, 200) : "";
+  notifier.alert("ai:" + err.code + ":" + err.status, "ИИ-консультант перешёл в офлайн-режим: " + reason(err) + detail);
+}
 
 const server = http.createServer(async (req, res) => {
   assignRequestId(req, res);
@@ -1761,10 +1796,12 @@ const server = http.createServer(async (req, res) => {
     const sqliteCode = err && Number.isInteger(err.errcode) ? err.errcode & 0xff : null;
     if (sqliteCode === 11 || sqliteCode === 26) {
       console.error(`[${req.id}] База ${store.path} повреждена: ${err.message}. Восстановите её из ${store.backupDir}`);
+      notifier.alert("db_corrupt", "База данных повреждена — сайт не может работать с заказами. Восстановите её из резервной копии.");
       sendJson(res, 503, { error: "db_corrupt", message: "Файл данных на сервере повреждён. Сообщите администратору." }, req);
       return;
     }
     console.error(`[${req.id}] ${req.method} ${req.url}:`, err);
+    notifier.serverError(req.method, req.url, err);
     sendJson(res, 500, { error: "server_error", message: "Внутренняя ошибка сервера" }, req);
   }
 });
@@ -1789,13 +1826,16 @@ server.listen(PORT, HOST, () => {
       normalizeProduct: normalizeStoredProduct,
       defaultProducts: DEFAULT_PRODUCTS,
       orderTotalText,
+      onBackupError: (err) => notifier.alert("backup", "Не удалось сделать резервную копию базы: " + scrub(err.message, sender.hideSecrets)),
     });
     runStartupMigrations(store);
     migrateInlineImages(store);
     documents = createDocuments({ store, rootDir: ROOT, dataDir: DATA_DIR });
   } catch (err) {
     console.error(err.message);
-    process.exit(1);
+    notifier.failed("ошибка запуска", err);
+    notifier.flush().then(() => process.exit(1));
+    return;
   }
   console.log(`Базис CRM: http://127.0.0.1:${PORT}`);
   SITES.forEach((site) => {
@@ -1832,6 +1872,13 @@ server.listen(PORT, HOST, () => {
     "Отправка PDF: e-mail " + (channels.email ? "включён" : "выключен (SMTP_HOST, SMTP_FROM)") +
       ", Telegram " + (channels.telegram ? "включён" : "выключен (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)")
   );
+  console.log(
+    notifier.enabled
+      ? "Оповещения: в Telegram (новые заказы и заявки, сбои сервера)"
+      : "Оповещения: выключены — задайте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID"
+  );
+  notifier.started(aiStatus.configured ? `ИИ: ${aiStatus.model}` : "ИИ: выключен");
+  if (!aiStatus.configured) notifyAiError(new AiError("ai_not_configured", 503), { method: "", url: "" });
   setTimeout(() => {
     localizeExternalImages(store).catch((err) => console.warn("Перенос картинок товаров:", err.message));
   }, 3000).unref();
@@ -1851,8 +1898,15 @@ function shutdown(signal) {
 }
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
-process.on("unhandledRejection", (err) => console.error("Необработанная ошибка:", err));
+process.on("unhandledRejection", (err) => {
+  console.error("Необработанная ошибка:", err);
+  notifier.alert(
+    "unhandled:" + scrub(err && err.message, sender.hideSecrets).slice(0, 80),
+    "Необработанная ошибка в фоне: " + scrub(err && err.message ? err.message : err, sender.hideSecrets)
+  );
+});
 /** После такой ошибки состояние процесса не гарантировано: закрываем базу и выходим, run-server.bat поднимет сервер заново. */
+let crashing = false;
 process.on("uncaughtException", (err) => {
   console.error(`[${new Date().toISOString()}] Сервер упал:`, err);
   try {
@@ -1860,5 +1914,8 @@ process.on("uncaughtException", (err) => {
   } catch {
     // база могла быть уже закрыта
   }
-  process.exit(1);
+  if (crashing) process.exit(1);
+  crashing = true;
+  notifier.failed("сбой процесса", err);
+  notifier.flush(3000).then(() => process.exit(1));
 });

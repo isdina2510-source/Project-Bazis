@@ -39,6 +39,7 @@ function isJsonRequest(req) {
 /**
  * HTTP-слой ядра. Транспортные помощники приходят из server.js, чтобы ядро
  * не зависело от конкретного сервера (можно подключить к Express, боту и т.п.).
+ * deps.onError(err, req) — необязательный: вызывается для каждой ошибки запроса (оповещения, мониторинг).
  */
 function createAiHttpHandler(ai, deps) {
   const { sendJson, readBody, clientIp, checkRateLimit, requireAdmin, rateLimit } = deps;
@@ -62,6 +63,13 @@ function createAiHttpHandler(ai, deps) {
   }
 
   function sendError(req, res, err) {
+    if (typeof deps.onError === "function") {
+      try {
+        deps.onError(err, req);
+      } catch (hookErr) {
+        console.error("AI: обработчик onError:", hookErr);
+      }
+    }
     if (res.writableEnded || res.destroyed) return;
     if (err instanceof AiError) {
       const body = { error: err.code };

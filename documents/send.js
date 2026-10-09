@@ -8,8 +8,10 @@ const { EMAIL_PATTERN } = require("../shared/requisites.json");
 
 const EMAIL_RE = new RegExp(EMAIL_PATTERN);
 const TELEGRAM_TIMEOUT_MS = 30000;
+const TELEGRAM_TEXT_TIMEOUT_MS = 15000;
 const TELEGRAM_MAX_BYTES = 50 * 1024 * 1024;
 const CAPTION_MAX = 1024;
+const TEXT_MAX = 4096;
 
 function sendError(code, message) {
   return Object.assign(new Error(message || code), { code, status: 400 });
@@ -79,20 +81,14 @@ function createSender(options = {}) {
   /**
    * @param {{ caption: string, fileName: string, buffer: Buffer }} message
    */
-  async function sendTelegram(message) {
-    if (!channels().telegram) throw sendError("telegram_not_configured", "Отправка в Telegram не настроена");
-    if (message.buffer.length > TELEGRAM_MAX_BYTES) throw sendError("file_too_large", "Файл больше 50 МБ");
-    const form = new FormData();
-    form.append("chat_id", tgChat);
-    form.append("caption", String(message.caption || "").slice(0, CAPTION_MAX));
-    form.append("document", new Blob([message.buffer], { type: "application/pdf" }), message.fileName);
+  async function callTelegram(method, init, timeoutMs, rejectedText) {
     let res;
     let body = null;
     try {
-      res = await fetchImpl("https://api.telegram.org/bot" + tgToken + "/sendDocument", {
+      res = await fetchImpl("https://api.telegram.org/bot" + tgToken + "/" + method, {
         method: "POST",
-        body: form,
-        signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS),
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
       });
       body = await res.json().catch(() => null);
     } catch (err) {
@@ -103,12 +99,38 @@ function createSender(options = {}) {
     }
     if (!res.ok || !body || !body.ok) {
       const reason = body && body.description ? body.description : "HTTP " + res.status;
-      throw Object.assign(new Error("Telegram отклонил файл: " + hideSecrets(reason)), { code: "send_failed", status: 502 });
+      throw Object.assign(new Error(rejectedText + ": " + hideSecrets(reason)), { code: "send_failed", status: 502 });
     }
     return { channel: "telegram", recipient: "chat " + tgChat };
   }
 
-  return { channels, sendEmail, sendTelegram };
+  async function sendTelegram(message) {
+    if (!channels().telegram) throw sendError("telegram_not_configured", "Отправка в Telegram не настроена");
+    if (message.buffer.length > TELEGRAM_MAX_BYTES) throw sendError("file_too_large", "Файл больше 50 МБ");
+    const form = new FormData();
+    form.append("chat_id", tgChat);
+    form.append("caption", String(message.caption || "").slice(0, CAPTION_MAX));
+    form.append("document", new Blob([message.buffer], { type: "application/pdf" }), message.fileName);
+    return callTelegram("sendDocument", { body: form }, TELEGRAM_TIMEOUT_MS, "Telegram отклонил файл");
+  }
+
+  /** Текстовое сообщение в рабочий чат (оповещения). */
+  async function sendTelegramText(text) {
+    if (!channels().telegram) throw sendError("telegram_not_configured", "Отправка в Telegram не настроена");
+    const body = JSON.stringify({
+      chat_id: tgChat,
+      text: String(text || "").slice(0, TEXT_MAX),
+      disable_web_page_preview: true,
+    });
+    return callTelegram(
+      "sendMessage",
+      { headers: { "Content-Type": "application/json" }, body },
+      TELEGRAM_TEXT_TIMEOUT_MS,
+      "Telegram отклонил сообщение"
+    );
+  }
+
+  return { channels, sendEmail, sendTelegram, sendTelegramText, hideSecrets };
 }
 
 module.exports = { createSender, EMAIL_RE };

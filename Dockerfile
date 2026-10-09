@@ -36,6 +36,7 @@ COPY config ./config
 COPY db ./db
 COPY documents ./documents
 COPY logging ./logging
+COPY notify ./notify
 COPY security ./security
 COPY shared ./shared
 COPY public ./public
