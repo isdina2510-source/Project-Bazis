@@ -21,17 +21,22 @@ function readAsDataUrl(file) {
  * Печать или подпись: PNG с прозрачным фоном выглядит в документе лучше всего.
  * file — имя файла на сервере (меняется вместе с картинкой) или null.
  */
-function CompanyImage({ kind, file, onChanged }) {
+/**
+ * Печать или подпись: «Не загружена» — файла нет; если файл есть, но предпросмотр не пришёл с сервера —
+ * отдельное состояние с «Повторить», чтобы не принять сбой за отсутствие печати.
+ */
+export function CompanyImage({ kind, file, onChanged }) {
   const present = !!file;
   const [url, setUrl] = useState("");
+  const [previewError, setPreviewError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!present) {
-      setUrl("");
-      return undefined;
-    }
+    setUrl("");
+    setPreviewError(false);
+    if (!present) return undefined;
     let alive = true;
     let objectUrl = "";
     companyImageUrl(kind)
@@ -40,12 +45,30 @@ function CompanyImage({ kind, file, onChanged }) {
         if (alive) setUrl(value);
         else URL.revokeObjectURL(value);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!alive || (err && err.code === "unauthorized")) return;
+        console.warn(err);
+        setPreviewError(true);
+      });
     return () => {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [kind, file, present]);
+  }, [kind, file, present, attempt]);
+
+  let preview;
+  if (!present) preview = <span>Не загружена</span>;
+  else if (url) preview = <img src={url} alt={IMAGE_LABELS[kind]} />;
+  else if (previewError) {
+    preview = (
+      <span role="alert">
+        Не удалось загрузить предпросмотр{" "}
+        <button type="button" className="dash-btn" onClick={() => setAttempt((n) => n + 1)}>
+          Повторить
+        </button>
+      </span>
+    );
+  } else preview = <span>Загружаем…</span>;
 
   const upload = async (event) => {
     const file = event.target.files && event.target.files[0];
@@ -89,7 +112,7 @@ function CompanyImage({ kind, file, onChanged }) {
   return (
     <div className="req-image">
       <p className="doc-subtitle">{IMAGE_LABELS[kind]}</p>
-      <div className="req-image-box">{url ? <img src={url} alt={IMAGE_LABELS[kind]} /> : <span>Не загружена</span>}</div>
+      <div className="req-image-box">{preview}</div>
       <div className="crm-card-actions">
         <label className={"dash-btn" + (busy ? " is-disabled" : "")}>
           {present ? "Заменить" : "Загрузить"}

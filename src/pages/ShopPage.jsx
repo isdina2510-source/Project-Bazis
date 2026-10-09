@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { CatalogUnavailable, StaleCatalogNote } from "../components/CatalogNotices.jsx";
 import ProductCard from "../components/ProductCard.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 import { CATEGORIES, categoryText } from "../lib/catalog.js";
@@ -21,7 +22,7 @@ function ProductsGrid({ items }) {
 }
 
 export default function ShopPage() {
-  const { products } = useStore();
+  const { products, productsStatus } = useStore();
   const { lang, t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,8 +36,11 @@ export default function ShopPage() {
   const allTitle = t("shop.catalog.all");
 
   const renderCatalog = () => {
+    if (productsStatus === "error") return <CatalogUnavailable lang={lang} t={t} />;
     if (!products.length) {
-      return <p className="products-empty">{t("shop.catalog.empty")}</p>;
+      return (
+        <p className="products-empty">{t(productsStatus === "loading" ? "shop.catalog.loading" : "shop.catalog.empty")}</p>
+      );
     }
 
     if (activeId === "all") {
@@ -95,6 +99,7 @@ export default function ShopPage() {
             );
           })}
         </nav>
+        {productsStatus === "stale" && products.length > 0 && <StaleCatalogNote t={t} />}
         <div>{renderCatalog()}</div>
       </section>
     </main>

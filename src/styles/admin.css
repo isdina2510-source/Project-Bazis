@@ -1701,3 +1701,35 @@ label.dash-btn {
   max-height: 8rem;
   object-fit: contain;
 }
+
+/* Раздел упал при отрисовке (AdminErrorBoundary.jsx). */
+.admin-crash {
+  min-height: 0;
+}
+
+.admin-crash-text {
+  margin: 0.6rem 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.88rem;
+  color: #ffb4a8;
+  overflow-wrap: anywhere;
+}
+
+/* Данные не загрузились: копия или ошибка с «Повторить» (Dashboard, ClientsSection, ProductsSection). */
+.admin-load-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 180, 90, 0.4);
+  border-radius: 14px;
+  background: rgba(255, 180, 90, 0.08);
+  color: #ffd7a8;
+}
+
+.admin-load-banner p {
+  margin: 0;
+  flex: 1 1 18rem;
+}

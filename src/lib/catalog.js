@@ -6,7 +6,7 @@ import { siteHasCategory } from "../site.js";
 export const ALL_CATEGORIES = catalog.CATEGORIES;
 /** Разделы, которые показывает этот сайт. */
 export const CATEGORIES = ALL_CATEGORIES.filter((item) => siteHasCategory(item.id));
-export const DEFAULT_PRODUCTS = catalog.DEFAULT_PRODUCTS;
+// catalog.DEFAULT_PRODUCTS — только для первого заполнения базы на сервере: в браузере их цены могли устареть.
 
 const CART_RULES = catalog.CART_RULES;
 /** Тот же предел сервер применяет к количеству в заказе. */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { normalizeProduct } from "../lib/catalog.js";
 import { listClients, listOrders, listOrdersPage } from "../lib/orders-db.js";
 import { fetchProducts, readCachedProducts } from "../lib/products-api.js";
+import AdminErrorBoundary from "./AdminErrorBoundary.jsx";
 import ClientModal from "./ClientModal.jsx";
 import ClientsSection from "./ClientsSection.jsx";
 import CompanySection from "./CompanySection.jsx";
@@ -23,12 +24,23 @@ function isUnauthorized(err) {
   return err && err.code === "unauthorized";
 }
 
+/** Товары: копия из браузера (если есть) только как запасной вариант; правка — лишь после загрузки с сервера. */
+function initialProducts() {
+  const cached = readCachedProducts();
+  return { list: cached ? cached.products : [], savedAt: cached ? cached.savedAt : null, status: "loading" };
+}
+
 export default function Dashboard({ onLogout }) {
   const [tab, setTab] = useState("crm");
   const [orders, setOrders] = useState([]);
   const [ordersError, setOrdersError] = useState(false);
   const [clients, setClients] = useState([]);
-  const [products, setProducts] = useState(() => readCachedProducts());
+  const [clientsError, setClientsError] = useState(false);
+  const [crmLoaded, setCrmLoaded] = useState(false);
+  const [productsState, setProductsState] = useState(initialProducts);
+  const [productsRetrying, setProductsRetrying] = useState(false);
+  const products = productsState.list;
+  const productsReady = productsState.status === "ready";
   // undefined — модалка закрыта, null — создание, объект — редактирование
   const [editingProduct, setEditingProduct] = useState(undefined);
   const [editingClient, setEditingClient] = useState(undefined);
@@ -48,16 +60,19 @@ export default function Dashboard({ onLogout }) {
   const loadClients = useCallback(async () => {
     try {
       setClients(await listClients());
+      setClientsError(false);
     } catch (err) {
       if (isUnauthorized(err)) return;
       console.warn(err);
       setClients([]);
+      setClientsError(true);
     }
   }, []);
 
   const loadCrmData = useCallback(async () => {
     await loadOrders();
     await loadClients();
+    setCrmLoaded(true);
   }, [loadOrders, loadClients]);
 
   /** Число новых заявок для значка на вкладке — без загрузки самих заявок. */
@@ -73,11 +88,26 @@ export default function Dashboard({ onLogout }) {
 
   const loadProducts = useCallback(async () => {
     try {
-      setProducts(await fetchProducts());
-    } catch {
-      // сервер недоступен — показываем кэш
+      const list = await fetchProducts();
+      setProductsState({ list, savedAt: Date.now(), status: "ready" });
+    } catch (err) {
+      if (isUnauthorized(err)) return;
+      console.warn(err);
+      // Копия (из браузера или от прошлой загрузки) — только для просмотра; без неё — ошибка без списка.
+      setProductsState((prev) => ({ ...prev, status: prev.list.length ? "stale" : "error" }));
     }
   }, []);
+
+  const retryProducts = useCallback(async () => {
+    setProductsRetrying(true);
+    try {
+      await loadProducts();
+    } finally {
+      setProductsRetrying(false);
+    }
+  }, [loadProducts]);
+
+  const setProducts = (update) => setProductsState((prev) => ({ ...prev, list: update(prev.list) }));
 
   useEffect(() => {
     loadLeadBadge();
@@ -123,7 +153,13 @@ export default function Dashboard({ onLogout }) {
               </button>
             )}
             {tab === "products" && (
-              <button type="button" className="dash-btn dash-btn-fill" onClick={() => setEditingProduct(null)}>
+              <button
+                type="button"
+                className="dash-btn dash-btn-fill"
+                disabled={!productsReady}
+                title={productsReady ? undefined : "Недоступно, пока товары не загружены с сервера"}
+                onClick={() => setEditingProduct(null)}
+              >
                 + Новый товар
               </button>
             )}
@@ -150,38 +186,49 @@ export default function Dashboard({ onLogout }) {
           ))}
         </nav>
 
-        {tab === "crm" && (
-          <OrdersSection key="orders" variant="orders" onChanged={loadLeadBadge} onOpenCompany={() => setTab("company")} />
-        )}
-        {tab === "leads" && <OrdersSection key="leads" variant="leads" onChanged={loadLeadBadge} />}
-        {tab === "clients" && (
-          <ClientsSection
-            clients={clients}
-            orders={orders}
-            onRefresh={loadCrmData}
-            onEdit={(client) => setEditingClient(client)}
-          />
-        )}
-        {tab === "products" && (
-          <ProductsSection
-            products={products}
-            onEdit={(product) => setEditingProduct(product)}
-            onDeleted={(id) => setProducts((prev) => prev.filter((item) => item.id !== id))}
-          />
-        )}
-        {tab === "reports" && (
-          <ReportsSection
-            orders={orders}
-            clients={clients}
-            products={products}
-            loadError={ordersError}
-            onRefresh={loadCrmData}
-          />
-        )}
-        {tab === "company" && <CompanySection />}
+        {/* key — у каждой вкладки своя граница ошибок: упавший раздел не мешает открыть другой. */}
+        <AdminErrorBoundary key={tab} name={tab}>
+          {tab === "crm" && (
+            <OrdersSection key="orders" variant="orders" onChanged={loadLeadBadge} onOpenCompany={() => setTab("company")} />
+          )}
+          {tab === "leads" && <OrdersSection key="leads" variant="leads" onChanged={loadLeadBadge} />}
+          {tab === "clients" && (
+            <ClientsSection
+              clients={clients}
+              orders={orders}
+              loading={!crmLoaded}
+              clientsError={clientsError}
+              ordersError={ordersError}
+              onRefresh={loadCrmData}
+              onEdit={(client) => setEditingClient(client)}
+            />
+          )}
+          {tab === "products" && (
+            <ProductsSection
+              products={products}
+              status={productsState.status}
+              savedAt={productsState.savedAt}
+              onRetry={retryProducts}
+              retrying={productsRetrying}
+              onEdit={(product) => productsReady && setEditingProduct(product)}
+              onDeleted={(id) => setProducts((prev) => prev.filter((item) => item.id !== id))}
+            />
+          )}
+          {tab === "reports" && (
+            <ReportsSection
+              orders={orders}
+              clients={clients}
+              products={products}
+              loadError={ordersError}
+              clientsError={clientsError}
+              onRefresh={loadCrmData}
+            />
+          )}
+          {tab === "company" && <CompanySection />}
+        </AdminErrorBoundary>
       </div>
 
-      {editingProduct !== undefined && (
+      {editingProduct !== undefined && productsReady && (
         <ProductModal
           product={editingProduct}
           onClose={() => setEditingProduct(undefined)}

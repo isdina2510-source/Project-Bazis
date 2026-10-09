@@ -8,6 +8,7 @@
  */
 const { URL, domainToASCII } = require("url");
 const net = require("net");
+const { readBoolean } = require("./values");
 
 const LABEL_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
 
@@ -66,10 +67,22 @@ function parseSiteUrl(raw) {
 }
 
 /**
- * Итоговые адреса всех сайтов.
- * @param {{ default: string, sites: Record<string, { label: string, hosts: string[], url?: string, subdomain?: string }> }} sitesConfig
+ * Включён ли сайт: у сайта с enabledEnv в shared/sites.json (MEDIA_SITE_ENABLED) — только при значении true,
+ * по умолчанию выключен. Основной сайт выключить нельзя.
+ */
+function siteEnabled(id, sitesConfig, env = {}) {
+  const site = sitesConfig.sites[id];
+  if (!site || id === sitesConfig.default || !site.enabledEnv) return { ok: true, value: !!site };
+  return readBoolean(env, site.enabledEnv, false);
+}
+
+/**
+ * Итоговые адреса сайтов. Выключенные сайты — в disabled (с доменами): сервер отвечает на них 404,
+ * сборка и конфиги прокси их не публикуют.
+ * @param {{ default: string, sites: Record<string, { label: string, hosts: string[], url?: string, subdomain?: string, enabledEnv?: string }> }} sitesConfig
  * @param {Record<string, string | undefined>} env
  * @returns {{ ok: boolean, errors: string[], domain: string, sites: Array<{ id: string, label: string, url: string,
+ *   urlSource: string, hosts: string[], publicHosts: string[] }>, disabled: Array<{ id: string, label: string, url: string,
  *   urlSource: string, hosts: string[], publicHosts: string[] }> }}
  */
 function resolveSites(sitesConfig, env = {}) {
@@ -78,7 +91,7 @@ function resolveSites(sitesConfig, env = {}) {
   if (!domainCheck.ok) errors.push(domainCheck.error);
   const domain = domainCheck.ok ? domainCheck.domain : "";
 
-  const sites = Object.entries(sitesConfig.sites).map(([id, site]) => {
+  const all = Object.entries(sitesConfig.sites).map(([id, site]) => {
     const envName = urlEnvName(id, sitesConfig.default);
     let url = "";
     let urlSource = "";
@@ -108,12 +121,22 @@ function resolveSites(sitesConfig, env = {}) {
       // У основного сайта посетители часто набирают www. — открываем тот же сайт.
       if (!site.subdomain && toPublicHostname(host) && !host.startsWith("www.")) hosts.add("www." + host);
     }
-    const all = [...hosts];
-    return { id, label: site.label, url, urlSource, hosts: all, publicHosts: all.filter((host) => toPublicHostname(host)) };
+    const list = [...hosts];
+    const enabled = siteEnabled(id, sitesConfig, env);
+    if (!enabled.ok) errors.push(enabled.error);
+    return {
+      id,
+      label: site.label,
+      url,
+      urlSource,
+      hosts: list,
+      publicHosts: list.filter((host) => toPublicHostname(host)),
+      enabled: enabled.value,
+    };
   });
 
   const owner = new Map();
-  for (const site of sites) {
+  for (const site of all) {
     for (const host of site.hosts) {
       if (owner.has(host) && owner.get(host) !== site.id) {
         errors.push(`Домен ${host} указан и у сайта ${owner.get(host)}, и у сайта ${site.id} — сервер не сможет выбрать, какой показать.`);
@@ -122,7 +145,14 @@ function resolveSites(sitesConfig, env = {}) {
     }
   }
 
-  return { ok: errors.length === 0, errors, domain, sites };
+  const strip = ({ enabled, ...site }) => site;
+  return {
+    ok: errors.length === 0,
+    errors,
+    domain,
+    sites: all.filter((site) => site.enabled).map(strip),
+    disabled: all.filter((site) => !site.enabled).map(strip),
+  };
 }
 
-module.exports = { urlEnvName, isLocalHostname, parseSiteDomain, parseSiteUrl, resolveSites };
+module.exports = { urlEnvName, isLocalHostname, parseSiteDomain, parseSiteUrl, resolveSites, siteEnabled };

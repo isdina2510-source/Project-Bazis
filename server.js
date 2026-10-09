@@ -32,6 +32,7 @@ const { readNumber, readTimeZone } = require("./config/values");
 const { integrationProblems, contentProblems } = require("./config/production");
 const { createOrderGuard, loadOrderGuardConfig } = require("./antispam/order-guard");
 const { createNotifier, scrub } = require("./notify");
+const { createClientErrorsHandler } = require("./notify/client-errors");
 
 loadEnvFile(path.join(__dirname, ".env"));
 
@@ -93,6 +94,10 @@ const SITES = sitesCheck.sites.map((resolved) => {
   return { ...resolved, hosts: new Set(resolved.hosts), distDir: path.join(ROOT, site.outDir), admin: !!site.admin };
 });
 const SITE_IDS = new Set(SITES.map((site) => site.id));
+/** Выключенные сайты (MEDIA_SITE_ENABLED не true): на их домены — 404, а не основной сайт. */
+const DISABLED_SITES = sitesCheck.disabled.map((resolved) => ({ ...resolved, hosts: new Set(resolved.hosts) }));
+const MEDIA_ENABLED = SITE_IDS.has("media");
+const MEDIA_STATUS_LINE = `Медиасайт: ${MEDIA_ENABLED ? "включён" : "выключен"}`;
 const IMAGES_DIR = path.join(ROOT, "images");
 const DATA_DIR = path.join(ROOT, "data");
 const UPLOADS_DIR = path.join(ROOT, "images", "uploads");
@@ -154,12 +159,11 @@ function productionProblems() {
     }
   }
   problems.push(...integrationProblems(process.env));
-  const media = SITES.find((site) => site.id === "media");
   problems.push(
     ...contentProblems({
       portfolio: readSourceFile("src/content/portfolio.js"),
       catalog: readSourceFile("src/lib/catalog.js"),
-      mediaPublished: !!(media && media.publicHosts.length),
+      mediaPublished: MEDIA_ENABLED,
     })
   );
   // Вызывается и при старте сервера: сбой загрузки sharp попадает в журнал сразу, а не при первом PDF.
@@ -188,6 +192,7 @@ if (process.argv.includes("--check-config")) {
   SITES.forEach((site) => {
     console.log(`Сайт «${site.label}»: ${site.url || "адрес не задан (только локально)"}; домены: ${[...site.hosts].join(", ")}`);
   });
+  console.log(MEDIA_STATUS_LINE);
   console.log(`Прокси: ${TRUST_PROXY ? "адрес посетителя — из X-Forwarded-For от Caddy/nginx на этом компьютере" : "выключен (TRUST_PROXY=0)"}`);
   if (process.argv.includes("--production")) {
     const problems = productionProblems();
@@ -644,6 +649,38 @@ function siteForHost(req) {
     );
   }
   return SITES.find((item) => item.id === DEFAULT_SITE);
+}
+
+/** Выключенный сайт, если запрос пришёл на его домен. */
+function disabledSiteForHost(req) {
+  const host = hostnameOf(req && req.headers && req.headers.host);
+  return DISABLED_SITES.find((item) => item.hosts.has(host)) || null;
+}
+
+const escapeHtml = (value) =>
+  String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+
+/**
+ * Домен выключенного сайта: 404, а не редирект — поисковики убирают сайт из выдачи, а не склеивают его
+ * с основным как дубль; человек видит, что сайт закрыт, и ссылку на основной.
+ */
+function sendDisabledSite(req, res, url, site) {
+  if (url.pathname.startsWith("/api/")) {
+    sendJson(res, 404, { error: "site_disabled" }, req);
+    return;
+  }
+  const main = SITES.find((item) => item.id === DEFAULT_SITE);
+  const mainUrl = main.url || `http://${[...main.hosts][0]}:${PORT}`;
+  const html =
+    '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="robots" content="noindex">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    `<title>${escapeHtml(site.label)} — сайт не работает</title></head>` +
+    '<body style="font-family:system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;line-height:1.5">' +
+    `<h1>Сайт «${escapeHtml(site.label)}» сейчас не работает</h1>` +
+    `<p>Все услуги ИП «Базис» — на основном сайте: <a href="${escapeHtml(mainUrl)}/">${escapeHtml(main.label)}</a>.</p>` +
+    "</body></html>";
+  res.writeHead(404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+  res.end(req.method === "HEAD" ? undefined : html);
 }
 
 /**
@@ -1544,6 +1581,11 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (parts[1] === "client-errors" && parts.length === 2) {
+    await handleClientErrors(req, res);
+    return;
+  }
+
   if (documentsHttp.matches(parts)) {
     await documentsHttp.handle(req, res, parts);
     return;
@@ -1746,6 +1788,16 @@ const notifier = createNotifier({
   stateFile: path.join(DATA_DIR, "notify-state.json"),
   crmUrl: (crmSite.url || `http://${[...crmSite.hosts][0]}:${PORT}`) + "/admin.html",
 });
+const handleClientErrors = createClientErrorsHandler({
+  readJsonObject,
+  sendJson,
+  isJsonRequest,
+  clientIp,
+  checkRateLimit,
+  notifier,
+  siteIds: SITE_IDS,
+  hideSecrets: sender.hideSecrets,
+});
 const documentsHttp = createDocumentsHttpHandler(() => documents, sender, {
   sendJson,
   readJsonObject,
@@ -1773,6 +1825,7 @@ const ai = createAi(process.env, {
   },
   getProducts: () => (store ? store.products.list() : null),
   historySecret: aiHistorySecret,
+  notifier,
 });
 const handleAiApi = createAiHttpHandler(ai, {
   sendJson,
@@ -1815,6 +1868,11 @@ const server = http.createServer(async (req, res) => {
     const headers = securityHeaders({ https: forwardedProto(req, TRUST_PROXY) === "https", admin: isAdminPath(url.pathname) });
     for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
     warnIfUntrustedProxy(req);
+    const disabledSite = disabledSiteForHost(req);
+    if (disabledSite) {
+      sendDisabledSite(req, res, url, disabledSite);
+      return;
+    }
     if (url.pathname.startsWith("/api/")) {
       if (!store) {
         sendJson(res, 503, { error: "starting", message: "Сервер запускается, повторите через несколько секунд" }, req);
@@ -1884,6 +1942,7 @@ server.listen(PORT, HOST, () => {
     const local = `http://${[...site.hosts][0]}:${PORT}`;
     console.log(`Сайт «${site.label}»: ${local}` + (site.url ? `, в интернете — ${site.url}` : ""));
   });
+  console.log(MEDIA_STATUS_LINE);
   console.log(`База данных (SQLite): ${store.path}`);
   console.log(`Резервные копии: ${store.backupDir}`);
   console.log(fileLog && fileLog.file() ? `Журнал: ${path.dirname(fileLog.file())} (по дням, хранится ${Number(process.env.LOG_KEEP_DAYS) || 14} дн.)` : "Журнал: только консоль");

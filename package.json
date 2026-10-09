@@ -18,7 +18,8 @@
     "preview": "npm run build && node server.js",
     "start": "node server.js",
     "server": "node server.js",
-    "test": "node --test \"ai/test/*.test.js\" \"antispam/test/*.test.js\" \"auth/test/*.test.js\" \"config/test/*.test.js\" \"db/test/*.test.js\" \"documents/test/*.test.js\" \"logging/test/*.test.js\" \"notify/test/*.test.js\" \"security/test/*.test.js\" \"test/*.test.js\"",
+    "test": "node --test \"ai/test/*.test.js\" \"antispam/test/*.test.js\" \"auth/test/*.test.js\" \"config/test/*.test.js\" \"db/test/*.test.js\" \"documents/test/*.test.js\" \"logging/test/*.test.js\" \"notify/test/*.test.js\" \"security/test/*.test.js\" \"test/*.test.js\" && vitest run",
+    "test:web": "vitest run",
     "check:prod": "node server.js --check-config --production",
     "deploy:config": "node scripts/deploy-config.mjs",
     "fonts": "node scripts/fonts.mjs",
@@ -37,9 +38,13 @@
     "unpdf": "^1.8.1"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "fontkit": "^2.0.4",
+    "jsdom": "^29.1.1",
     "subset-font": "^2.9.0",
-    "vite": "^8.3.2"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   }
 }

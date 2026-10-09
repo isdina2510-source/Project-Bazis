@@ -6,6 +6,11 @@ const { parseClassifierAnswer, decideTopic } = require("../lib/topic");
 
 const FAST = { ...loadAiConfig({}), retryBaseMs: 1, retryMaxMs: 5, deadlineMs: 3000, log: false };
 const CATALOG = "Управление бизнесом:\n1. Экспресс-аудит (от 150 000 ₸)\nИнфраструктура:\n1. Создание сайта (от 50 000 ₸)";
+/** Каталог из базы (services.getProducts) — из него консультант берёт разделы для отказа «не по теме». */
+const PRODUCTS = [
+  { id: "a", title: "Экспресс-аудит", price: 150000, currency: "KZT", category: "management" },
+  { id: "s", title: "Создание сайта", price: 50000, currency: "KZT", category: "infrastructure" },
+];
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 const docs = [
   { kind: "text", name: "курсовая.docx", text: "Курсовая по биологии: строение клетки" },
@@ -27,7 +32,8 @@ function consultant(verdict, answer = "Ответ по сути") {
       return answer;
     },
   };
-  return { ai: createAiCore({ provider, features: loadFeatures(), config: FAST }), calls };
+  const services = { getProducts: () => PRODUCTS };
+  return { ai: createAiCore({ provider, features: loadFeatures(), config: FAST, services }), calls };
 }
 
 test("вердикт классификатора: имена сверяются со вложениями, мусор — нет вердикта", () => {

@@ -10,6 +10,7 @@ import {
 import { confirmAction, notify } from "./dialogs.jsx";
 import { formatDate, ordersCountLabel, statusLabel } from "./format.js";
 import { WhatsAppButton } from "./OrdersSection.jsx";
+import LoadErrorBanner from "./LoadErrorBanner.jsx";
 import RefreshButton from "./RefreshButton.jsx";
 
 function ClientCard({ client, expanded, onToggle, onEdit, onDelete }) {
@@ -82,8 +83,26 @@ function ClientCard({ client, expanded, onToggle, onEdit, onDelete }) {
   );
 }
 
-export default function ClientsSection({ clients, orders, onRefresh, onEdit }) {
+/**
+ * clientsError / ordersError — список не загрузился: вместо пустого списка «Пока нет клиентов» показываем ошибку
+ * и «Повторить». Без заказов карточки неполные (суммы, клиенты из заказов), поэтому их тоже не показываем.
+ */
+export default function ClientsSection({ clients, orders, loading = false, clientsError = false, ordersError = false, onRefresh, onEdit }) {
   const [search, setSearch] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const loadError = clientsError
+    ? "Не удалось загрузить клиентов. Проверьте связь с сервером и нажмите «Повторить»."
+    : ordersError
+      ? "Не удалось загрузить заказы — без них суммы и история клиентов были бы неверными. Нажмите «Повторить»."
+      : "";
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRetrying(false);
+    }
+  };
   const [expandedKey, setExpandedKey] = useState("");
 
   const views = useMemo(() => buildClientViews(clients, orders), [clients, orders]);
@@ -108,7 +127,7 @@ export default function ClientsSection({ clients, orders, onRefresh, onEdit }) {
     <section id="clients-section" className="dash-card dash-card-full">
       <div className="crm-toolbar">
         <div>
-          <h2>Клиенты · {list.length}</h2>
+          <h2>Клиенты{loadError || loading ? "" : " · " + list.length}</h2>
           <p className="admin-hint">Контакты собираются из заказов. Можно добавить клиента вручную.</p>
         </div>
         <RefreshButton onRefresh={onRefresh} />
@@ -123,8 +142,11 @@ export default function ClientsSection({ clients, orders, onRefresh, onEdit }) {
           onChange={(event) => setSearch(event.target.value)}
         />
       </label>
+      {loadError && <LoadErrorBanner text={loadError} onRetry={retry} retrying={retrying} />}
       <div className="crm-clients">
-        {list.length ? (
+        {loadError ? null : loading ? (
+          <p className="crm-empty">Загружаем…</p>
+        ) : list.length ? (
           list.map((client) => (
             <ClientCard
               key={client.key}

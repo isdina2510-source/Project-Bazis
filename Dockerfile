@@ -17,6 +17,8 @@ RUN npm test
 ARG SITE_DOMAIN=""
 ARG SITE_URL=""
 ARG MEDIA_SITE_URL=""
+# Без MEDIA_SITE_ENABLED=true ссылок на медиасайт в сборке нет (сервер его тоже не отдаёт).
+ARG MEDIA_SITE_ENABLED=""
 RUN npm run build
 
 FROM node:22-bookworm-slim

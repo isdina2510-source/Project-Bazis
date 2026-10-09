@@ -59,6 +59,7 @@ test("LOW-21: check:prod сообщает о ключе ИИ, оповещени
   try {
     const result = await runServer(content, ["--check-config", "--production"], {
       SITE_DOMAIN: "example.kz",
+      MEDIA_SITE_ENABLED: "true",
       OPENAI_API_KEY: "",
       TELEGRAM_BOT_TOKEN: "",
       TELEGRAM_CHAT_ID: "",
@@ -81,6 +82,34 @@ test("LOW-21: медиасайт без домена (не опубликова�
     assert.doesNotMatch(result.stderr, /portfolio\.js/);
   } finally {
     content.cleanup();
+  }
+});
+
+test("HIGH-09: медиасайт выключен (MEDIA_SITE_ENABLED не задан) — даже с доменом стоковое портфолио не проверяется", async () => {
+  const content = createSandbox({ "src/content/portfolio.js": PORTFOLIO_STOCK, "src/lib/catalog.js": catalogWith("Dinara_888888") });
+  try {
+    const off = await runServer(content, ["--check-config", "--production"], { SITE_DOMAIN: "example.kz" });
+    assert.doesNotMatch(off.stderr, /portfolio\.js/);
+    assert.match(off.stdout, /^Медиасайт: выключен$/m);
+    assert.doesNotMatch(off.stdout, /Базис Медиа/);
+    const on = await runServer(content, ["--check-config", "--production"], { SITE_DOMAIN: "example.kz", MEDIA_SITE_ENABLED: "true" });
+    assert.match(on.stderr, /portfolio\.js/);
+    assert.match(on.stdout, /^Медиасайт: включён$/m);
+    assert.match(on.stdout, /Сайт «Базис Медиа»: https:\/\/media\.example\.kz/);
+  } finally {
+    content.cleanup();
+  }
+});
+
+test("HIGH-09: MEDIA_SITE_ENABLED не true/false — старт прерывается с кодом 4 и именем переменной", async () => {
+  for (const value of ["1", "yes", "вкл"]) {
+    const result = await runServer(sandbox, ["--check-config"], { MEDIA_SITE_ENABLED: value });
+    assert.equal(result.code, EXIT_CONFIG_ERROR, `${value}: ${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /MEDIA_SITE_ENABLED=/, value);
+  }
+  for (const value of ["", "false", "TRUE"]) {
+    const result = await runServer(sandbox, ["--check-config"], { MEDIA_SITE_ENABLED: value });
+    assert.equal(result.code, 0, `${value}: ${result.stderr}`);
   }
 });
 

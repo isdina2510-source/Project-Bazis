@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseSiteDomain, resolveSites } = require("../sites");
 const { parseTrustProxy, clientAddress, forwardedProto, isProxied } = require("../proxy");
-const { readNumber, readTimeZone } = require("../values");
+const { readNumber, readTimeZone, readBoolean } = require("../values");
 const { integrationProblems, contentProblems } = require("../production");
 const sitesConfig = require("../../shared/sites.json");
 
@@ -32,16 +32,55 @@ test("SITE_DOMAIN: не домен — понятная ошибка", () => {
   }
 });
 
+const MEDIA_ON = { MEDIA_SITE_ENABLED: "true" };
+
 test("без домена: только локальные адреса, ошибок нет", () => {
-  const resolved = resolveSites(sitesConfig, {});
+  const resolved = resolveSites(sitesConfig, MEDIA_ON);
   assert.equal(resolved.ok, true);
   assert.equal(bazis(resolved).url, "");
   assert.deepEqual(bazis(resolved).publicHosts, []);
   assert.ok(media(resolved).hosts.includes("media.localhost"));
 });
 
-test("SITE_DOMAIN: основной сайт на домене и www., медиа — на поддомене", () => {
+test("HIGH-09: MEDIA_SITE_ENABLED не задан — медиасайт выключен: не публикуется, но его домены известны (для 404)", () => {
   const resolved = resolveSites(sitesConfig, { SITE_DOMAIN: "bazis.kz" });
+  assert.equal(resolved.ok, true);
+  assert.deepEqual(resolved.sites.map((item) => item.id), ["bazis"]);
+  assert.deepEqual(resolved.disabled.map((item) => item.id), ["media"]);
+  assert.deepEqual(resolved.disabled[0].publicHosts, ["media.bazis.kz"]);
+  assert.ok(resolved.disabled[0].hosts.includes("media.localhost"));
+  // Конфиги прокси (scripts/deploy-config.mjs) берут домены только из sites.
+  assert.deepEqual(resolved.sites.flatMap((item) => item.publicHosts).sort(), ["bazis.kz", "www.bazis.kz"]);
+  assert.equal(resolveSites(sitesConfig, { MEDIA_SITE_ENABLED: "false" }).disabled.length, 1);
+  assert.equal(resolveSites(sitesConfig, { MEDIA_SITE_ENABLED: " " }).disabled.length, 1);
+});
+
+test("HIGH-09: MEDIA_SITE_ENABLED=true (регистр не важен) — оба сайта; мусор — ошибка с именем переменной", () => {
+  for (const value of ["true", "TRUE", " True "]) {
+    const resolved = resolveSites(sitesConfig, { MEDIA_SITE_ENABLED: value });
+    assert.deepEqual(resolved.sites.map((item) => item.id), ["bazis", "media"], value);
+    assert.deepEqual(resolved.disabled, [], value);
+  }
+  for (const value of ["1", "yes", "on", "да"]) {
+    const resolved = resolveSites(sitesConfig, { MEDIA_SITE_ENABLED: value });
+    assert.equal(resolved.ok, false, value);
+    assert.match(resolved.errors.join("\n"), /^MEDIA_SITE_ENABLED=/m, value);
+  }
+});
+
+test("readBoolean: пусто — по умолчанию, true/false — значение, иначе ошибка", () => {
+  assert.deepEqual(readBoolean({}, "X_ON", false), { ok: true, value: false });
+  assert.deepEqual(readBoolean({ X_ON: "" }, "X_ON", true), { ok: true, value: true });
+  assert.deepEqual(readBoolean({ X_ON: " FALSE " }, "X_ON", true), { ok: true, value: false });
+  assert.deepEqual(readBoolean({ X_ON: "true" }, "X_ON", false), { ok: true, value: true });
+  const bad = readBoolean({ X_ON: "1" }, "X_ON", false);
+  assert.equal(bad.ok, false);
+  assert.equal(bad.value, false);
+  assert.match(bad.error, /^X_ON=1 — нужно true или false/);
+});
+
+test("SITE_DOMAIN: основной сайт на домене и www., медиа — на поддомене", () => {
+  const resolved = resolveSites(sitesConfig, { SITE_DOMAIN: "bazis.kz", ...MEDIA_ON });
   assert.equal(resolved.ok, true);
   assert.equal(bazis(resolved).url, "https://bazis.kz");
   assert.deepEqual(bazis(resolved).publicHosts.sort(), ["bazis.kz", "www.bazis.kz"]);
@@ -52,7 +91,7 @@ test("SITE_DOMAIN: основной сайт на домене и www., меди
 });
 
 test("явный MEDIA_SITE_URL важнее SITE_DOMAIN", () => {
-  const resolved = resolveSites(sitesConfig, { SITE_DOMAIN: "bazis.kz", MEDIA_SITE_URL: "https://bazis-media.kz/" });
+  const resolved = resolveSites(sitesConfig, { SITE_DOMAIN: "bazis.kz", MEDIA_SITE_URL: "https://bazis-media.kz/", ...MEDIA_ON });
   assert.equal(resolved.ok, true);
   assert.equal(media(resolved).url, "https://bazis-media.kz");
   assert.equal(media(resolved).urlSource, "MEDIA_SITE_URL");

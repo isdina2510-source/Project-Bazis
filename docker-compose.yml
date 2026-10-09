@@ -2,7 +2,7 @@
 # Остановка:   docker compose down        (данные остаются в томах)
 # Журнал:      docker compose logs -f
 # Настройки (ADMIN_PASSWORD, OPENAI_API_KEY, SITE_DOMAIN…) — в .env рядом с этим файлом.
-# После изменения SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL нужна пересборка: docker compose up -d --build.
+# После изменения SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL / MEDIA_SITE_ENABLED нужна пересборка: docker compose up -d --build.
 # Автозапуск после входа в Windows: install-docker-autostart.bat.
 
 # Имя закреплено: по нему называются тома с данными (project_bazis-data…). Без него имя берётся из папки,
@@ -17,6 +17,7 @@ services:
         SITE_DOMAIN: ${SITE_DOMAIN:-}
         SITE_URL: ${SITE_URL:-}
         MEDIA_SITE_URL: ${MEDIA_SITE_URL:-}
+        MEDIA_SITE_ENABLED: ${MEDIA_SITE_ENABLED:-}
     image: bazis-site
     init: true
     restart: unless-stopped

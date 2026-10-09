@@ -26,7 +26,7 @@ function integrationProblems(env) {
  * Заглушки в исходниках сайта; null — файла нет (в Docker-образе папки src нет, проверка — на компьютере со сборкой).
  * Портфолио показывает только «Базис Медиа»: пока у медиасайта нет адреса в интернете, стоковые фото никто не видит.
  * @param {{ portfolio: string | null, catalog: string | null, mediaPublished?: boolean }} sources тексты
- *   src/content/portfolio.js и src/lib/catalog.js; mediaPublished — у медиасайта есть публичный домен
+ *   src/content/portfolio.js и src/lib/catalog.js; mediaPublished — медиасайт включён (MEDIA_SITE_ENABLED=true)
  */
 function contentProblems({ portfolio, catalog, mediaPublished = false }) {
   const problems = [];

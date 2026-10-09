@@ -11,7 +11,7 @@ const FAST = { ...loadAiConfig({}), retryBaseMs: 1, retryMaxMs: 5, deadlineMs: 3
 const echo = { name: "echo", buildMessages: (input) => [{ role: "user", content: String(input.text || "") }] };
 const adminEcho = { ...echo, name: "admin-echo", access: "admin" };
 
-const mainCall = (calls) => calls.filter((c) => /Услуги:/.test(String(c.messages[0].content))).at(-1);
+const mainCall = (calls) => calls.filter((c) => String(c.messages[0].content).startsWith("Ты ИИ-консультант")).at(-1);
 
 function fakeProvider(impl) {
   const calls = [];

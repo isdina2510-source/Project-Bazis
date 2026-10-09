@@ -13,6 +13,7 @@
     },
     "media": {
       "label": "Базис Медиа",
+      "enabledEnv": "MEDIA_SITE_ENABLED",
       "categories": ["infrastructure", "media"],
       "hosts": ["media.localhost"],
       "subdomain": "media",

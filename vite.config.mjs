@@ -13,8 +13,9 @@ const API_TARGET = "http://127.0.0.1:" + SERVER_PORT;
 const BUILD_INFO_FILE = ".build-info.json";
 
 /**
- * Адрес каждого сайта для ссылок между сайтами: SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL / url из shared/sites.json
+ * Адрес каждого включённого сайта для ссылок между сайтами: SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL / url из shared/sites.json
  * (config/sites.js), иначе локальный адрес (dev-сервер Vite или node server.js на первом домене из hosts).
+ * Выключенного сайта (MEDIA_SITE_ENABLED) в списке нет — ссылки на него не показываются (siteUrl → "").
  * В режиме разработки ссылки всегда локальные, чтобы не уводить на боевой сайт.
  */
 function siteUrls(resolved, command) {
@@ -87,7 +88,9 @@ export default defineConfig(({ mode, command }) => {
   if (!resolved.ok) throw new Error("Неверные настройки адреса сайта в .env:\n" + resolved.errors.map((err) => "  • " + err).join("\n"));
   const urls = siteUrls(resolved, command);
   // Абсолютные canonical, hreflang и og:url — только если адрес сайта задан (SITE_DOMAIN и т.п.).
-  const origin = resolved.sites.find((item) => item.id === siteId).url;
+  // Выключенный сайт (MEDIA_SITE_ENABLED) собирается без адреса: сервер его не отдаёт, ссылок на него нет.
+  const own = resolved.sites.find((item) => item.id === siteId);
+  const origin = own ? own.url : "";
 
   const input = {
     main: resolve(import.meta.dirname, "index.html"),
@@ -109,6 +112,8 @@ export default defineConfig(({ mode, command }) => {
     define: {
       "import.meta.env.VITE_SITE": JSON.stringify(siteId),
       __SITE_URLS__: JSON.stringify(urls),
+      // Метка сборки в отчётах об ошибках из браузера (src/lib/client-errors.js): 20261009T1530.
+      __BUILD_ID__: JSON.stringify(command === "serve" ? "dev" : new Date().toISOString().replace(/[-:]/g, "").slice(0, 13)),
     },
     build: {
       outDir: site.outDir,

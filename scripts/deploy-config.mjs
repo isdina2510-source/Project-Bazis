@@ -57,6 +57,7 @@ for (const name of ["Caddyfile", "nginx.conf"]) {
 
 console.log("Готово: deploy/generated/Caddyfile и deploy/generated/nginx.conf");
 resolved.sites.forEach((site) => console.log(`  «${site.label}»: ${site.url} (домены: ${site.publicHosts.join(", ")})`));
+resolved.disabled.forEach((site) => console.log(`  «${site.label}»: выключен — в конфиги не включён`));
 console.log(
   "\nДальше:\n" +
     `  1. DNS: A-записи ${hosts.join(", ")} → IP этого сервера.\n` +

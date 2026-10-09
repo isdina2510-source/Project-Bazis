@@ -21,13 +21,15 @@ const { createHistorySigner } = require("./lib/history-sign");
  *   budgetStorage   { load(), save(state) } — расход суточного бюджета переживает перезапуск
  *   getProducts     () => товары из базы — каталог для промпта консультанта
  *   historySecret   () => строка ≥ 16 символов — ключ подписи реплик консультанта в истории
+ *   notifier        { alert(key, text) } — оповещение о сбоях (например, каталог для консультанта не прочитался)
  */
-function createAi(env = process.env, { budgetStorage = null, getProducts = null, historySecret = null } = {}) {
+function createAi(env = process.env, { budgetStorage = null, getProducts = null, historySecret = null, notifier = null } = {}) {
   const config = loadAiConfig(env);
   const plugins = [createMetricsPlugin()];
   if (config.log) plugins.push(createLoggerPlugin());
   const services = {
     getProducts,
+    notifier,
     historySigner: historySecret ? createHistorySigner(historySecret) : null,
   };
   return createAiCore({ provider: createProvider(env), features: loadFeatures(), plugins, config, budgetStorage, services });

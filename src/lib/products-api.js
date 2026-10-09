@@ -1,48 +1,53 @@
-import { apiFetch, parseApiError } from "./api.js";
-import {
-  DEFAULT_IMAGE,
-  DEFAULT_PRODUCTS,
-  normalizeCategory,
-  normalizeCurrency,
-  normalizeKind,
-  normalizeProduct,
-} from "./catalog.js";
+import { apiError, apiFetch, invalidResponseError, parseApiError, readJson } from "./api.js";
+import { DEFAULT_IMAGE, normalizeCategory, normalizeCurrency, normalizeKind, normalizeProduct } from "./catalog.js";
 
-const PRODUCTS_KEY = "bazis_products";
+/** Старый формат — просто массив, без даты. */
+const LEGACY_PRODUCTS_KEY = "bazis_products";
 const PRODUCTS_CACHE_KEY = "bazis_products_cache";
 
+/**
+ * Последний каталог, полученный с сервера: { products, savedAt } (savedAt — мс или null для старого кэша без даты)
+ * или null, если кэша нет. Каталога по умолчанию тут нет: его цены могут не совпадать с настоящими.
+ */
 export function readCachedProducts() {
-  for (const key of [PRODUCTS_CACHE_KEY, PRODUCTS_KEY]) {
+  for (const key of [PRODUCTS_CACHE_KEY, LEGACY_PRODUCTS_KEY]) {
     try {
       const raw = localStorage.getItem(key);
       if (!raw) continue;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) {
-        return parsed.map(normalizeProduct).filter((item) => item.id && item.title);
-      }
+      const list = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.products) ? parsed.products : null;
+      if (!list || !list.length) continue;
+      const products = list.map(normalizeProduct).filter((item) => item.id && item.title);
+      if (!products.length) continue;
+      const savedAt = !Array.isArray(parsed) && Number.isFinite(parsed.savedAt) ? parsed.savedAt : null;
+      return { products, savedAt };
     } catch {
       // битый кэш — игнорируем
     }
   }
-  return DEFAULT_PRODUCTS.map(normalizeProduct);
+  return null;
 }
 
-function writeCachedProducts(list) {
+export function writeCachedProducts(list, savedAt = Date.now()) {
   try {
-    const payload = JSON.stringify(list);
-    localStorage.setItem(PRODUCTS_CACHE_KEY, payload);
-    localStorage.setItem(PRODUCTS_KEY, payload);
+    localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify({ savedAt, products: list }));
+    localStorage.removeItem(LEGACY_PRODUCTS_KEY);
   } catch {
     // QuotaExceeded — кэш не критичен
   }
 }
 
 export async function fetchProducts() {
-  const res = await apiFetch("/api/products");
-  if (!res.ok) throw new Error("products_fetch_failed");
-  const data = await res.json();
+  let res;
+  try {
+    res = await apiFetch("/api/products");
+  } catch {
+    throw apiError("network", "network_error");
+  }
+  if (!res.ok) throw apiError("products_fetch_failed", "products_fetch_failed", res.status);
+  const data = await readJson(res);
   const list = Array.isArray(data) ? data : data && data.products;
-  if (!Array.isArray(list)) throw new Error("products_invalid");
+  if (!Array.isArray(list)) throw invalidResponseError();
   const normalized = list.map(normalizeProduct);
   writeCachedProducts(normalized);
   return normalized;

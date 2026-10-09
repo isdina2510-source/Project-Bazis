@@ -2,7 +2,7 @@
  * Заказы и клиенты CRM. Единственный источник данных — сервер (/api): в браузере
  * заказы и контакты покупателей не хранятся.
  */
-import { apiFetch } from "./api.js";
+import { apiError, apiFetch, invalidResponseError, readJson } from "./api.js";
 import { SITE_ID } from "../site.js";
 import { isProofError, takeOrderProof } from "./order-proof.js";
 
@@ -25,13 +25,6 @@ export function purgeLegacyLocalCrm() {
   }
 }
 
-function apiError(code, message, status) {
-  const err = new Error(message || code);
-  err.code = code;
-  err.status = status;
-  return err;
-}
-
 /** Запрос к API: любая неудача — исключение с code (network, rate_limited, catalog_changed, …). */
 async function request(path, options) {
   let res;
@@ -50,7 +43,13 @@ async function request(path, options) {
     }
     throw apiError(data.error || "http_" + res.status, data.message, res.status);
   }
-  return res.json();
+  return readJson(res);
+}
+
+/** Список из ответа сервера; не массив — invalid_response, а не «пусто». */
+function asList(value) {
+  if (!Array.isArray(value)) throw invalidResponseError();
+  return value;
 }
 
 function ignoreNotFound(err) {
@@ -143,8 +142,7 @@ export async function listOrders() {
     }
     throw apiError(data.error || "http_" + res.status, data.message, res.status);
   }
-  const data = await res.json();
-  const list = Array.isArray(data) ? data : [];
+  const list = asList(await readJson(res));
   const etag = res.headers.get("ETag");
   ordersCache = etag ? { etag, data: list } : null;
   return list;
@@ -165,10 +163,11 @@ export async function listOrdersPage({ kind, status, cursor, limit = 50, q, from
   if (from) query.set("from", from);
   if (to) query.set("to", to);
   const data = await request("/api/orders?" + query, { admin: true });
+  if (!data || typeof data !== "object") throw invalidResponseError();
   return {
-    items: Array.isArray(data.items) ? data.items : [],
+    items: asList(data.items),
     nextCursor: data.nextCursor || null,
-    counts: data.counts || {},
+    counts: data.counts && typeof data.counts === "object" ? data.counts : {},
   };
 }
 
@@ -182,8 +181,7 @@ export function removeOrder(id) {
 }
 
 export async function listClients() {
-  const data = await request("/api/clients", { admin: true });
-  return Array.isArray(data) ? data : [];
+  return asList(await request("/api/clients", { admin: true }));
 }
 
 /** Создать или обновить клиента; при совпадении телефона сервер объединит карточки. */

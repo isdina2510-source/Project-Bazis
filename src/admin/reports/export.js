@@ -1,4 +1,5 @@
 import { formatPrice } from "../../lib/catalog.js";
+import { isChunkError } from "../../lib/chunk-errors.js";
 import { downloadBlob } from "../../lib/download.js";
 import { notify } from "../dialogs.jsx";
 
@@ -44,13 +45,11 @@ export class StaleBuildError extends Error {
   }
 }
 
-const CHUNK_ERROR_RE = /dynamically imported module|Importing a module script failed|error loading dynamically|Failed to fetch|Unable to preload/i;
-
 async function lazyImport(load) {
   try {
     return await load();
   } catch (err) {
-    throw CHUNK_ERROR_RE.test(String(err && err.message)) ? new StaleBuildError(err) : err;
+    throw isChunkError(err) ? new StaleBuildError(err) : err;
   }
 }
 

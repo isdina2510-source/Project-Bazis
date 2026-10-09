@@ -21,8 +21,8 @@ const TODO_PREFIX = "TODO(kk):";
 const CYRILLIC = /[\u0400-\u04FF]/;
 const verbose = process.argv.includes("--verbose");
 
-/** Не переводятся в рамках задачи: админка (только ru) и офлайн-ответы чат-бота. */
-const EXCLUDED = ["admin/", "chat/consult.js", "locales/", "generated/"];
+/** Не переводятся в рамках задачи: админка (только ru), офлайн-ответы чат-бота и тесты. */
+const EXCLUDED = ["admin/", "chat/consult.js", "locales/", "generated/", "test/"];
 
 const errors = [];
 const warnings = [];
@@ -146,7 +146,7 @@ function listSourceFiles(dir, out = []) {
     const inSrc = path.relative(SRC, full).replace(/\\/g, "/") + (entry.isDirectory() ? "/" : "");
     if (EXCLUDED.some((prefix) => inSrc.startsWith(prefix))) return;
     if (entry.isDirectory()) listSourceFiles(full, out);
-    else if (/\.(jsx?|mjs)$/.test(entry.name)) out.push(full);
+    else if (/\.(jsx?|mjs)$/.test(entry.name) && !/\.test\.jsx?$/.test(entry.name)) out.push(full);
   });
   return out;
 }

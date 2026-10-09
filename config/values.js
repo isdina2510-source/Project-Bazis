@@ -38,4 +38,14 @@ function readTimeZone(env, name, fallback) {
   }
 }
 
-module.exports = { readNumber, readTimeZone };
+/** Да/нет из env[name]: только true или false (регистр и пробелы по краям не важны). */
+function readBoolean(env, name, fallback) {
+  const raw = env[name];
+  const text = raw == null ? "" : String(raw).trim().toLowerCase();
+  if (!text) return { ok: true, value: fallback };
+  if (text === "true") return { ok: true, value: true };
+  if (text === "false") return { ok: true, value: false };
+  return { ok: false, value: fallback, error: `${name}=${raw} — нужно true или false.` };
+}
+
+module.exports = { readNumber, readTimeZone, readBoolean };

@@ -2922,3 +2922,27 @@ body.contact-open {
     transition: none;
   }
 }
+
+/* Витрина упала при отрисовке (components/StoreErrorScreen.jsx). */
+.error-screen {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-top: 18vh;
+  padding-bottom: 18vh;
+}
+
+.error-screen p {
+  color: var(--ink-soft);
+}
+
+/* Каталог не загрузился (components/CatalogNotices.jsx). */
+.catalog-unavailable-title {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+
+.catalog-stale-note {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}

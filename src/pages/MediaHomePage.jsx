@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import AnchorLink from "../components/AnchorLink.jsx";
 import ArticleCard from "../components/ArticleCard.jsx";
+import { CatalogUnavailable, StaleCatalogNote } from "../components/CatalogNotices.jsx";
 import ContactSection from "../components/ContactSection.jsx";
 import ResponsiveImage from "../components/ResponsiveImage.jsx";
 import { sortedArticles } from "../content/articles.js";
@@ -23,7 +24,7 @@ function workTitle(work, lang) {
 
 export default function MediaHomePage() {
   const { lang, t, to } = useI18n();
-  const { products, openContact } = useStore();
+  const { products, productsStatus, openContact } = useStore();
   const [kind, setKind] = useState("all");
 
   const kinds = PORTFOLIO_KINDS.filter((id) => PORTFOLIO.some((work) => work.kind === id));
@@ -84,6 +85,8 @@ export default function MediaHomePage() {
             {t("media_home.services.all")}
           </Link>
         </header>
+        {productsStatus === "error" && <CatalogUnavailable lang={lang} t={t} />}
+        {productsStatus === "stale" && products.length > 0 && <StaleCatalogNote t={t} />}
         <div className="mh-service-grid">
           {products.map((product) => {
             const title = productText(product, "title", lang);

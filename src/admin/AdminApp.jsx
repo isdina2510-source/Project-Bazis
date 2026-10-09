@@ -7,6 +7,7 @@ import {
   hasStoredAdminSession,
   saveAdminSession,
 } from "../lib/api.js";
+import AdminErrorBoundary from "./AdminErrorBoundary.jsx";
 import Dashboard from "./Dashboard.jsx";
 import { DialogHost, closeDialogs } from "./dialogs.jsx";
 import LoginView from "./LoginView.jsx";
@@ -30,6 +31,14 @@ async function verifyPassword(password) {
 }
 
 export default function AdminApp() {
+  return (
+    <AdminErrorBoundary name="app">
+      <AdminShell />
+    </AdminErrorBoundary>
+  );
+}
+
+function AdminShell() {
   const [authed, setAuthed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

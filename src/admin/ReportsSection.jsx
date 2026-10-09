@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { STATUS_LABELS, isLead } from "./format.js";
+import LoadErrorBanner from "./LoadErrorBanner.jsx";
 import RefreshButton from "./RefreshButton.jsx";
 import {
   CHANNELS,
@@ -48,7 +49,7 @@ function CheckGroup({ legend, options, value, onChange }) {
   );
 }
 
-export default function ReportsSection({ orders, clients, products, loadError, onRefresh }) {
+export default function ReportsSection({ orders, clients, products, loadError, clientsError = false, onRefresh }) {
   const [filters, setFilters] = useState(defaultFilters);
   const [preset, setPreset] = useState("30d");
   const [busy, setBusy] = useState("");
@@ -62,6 +63,9 @@ export default function ReportsSection({ orders, clients, products, loadError, o
   );
   const activeType = REPORT_TYPES.find((item) => item.id === filters.type);
   const isLeads = filters.type === "leads";
+  /** Отчёт «Клиенты» без карточек клиентов неполный: в файл такой не выгружаем. */
+  const clientsIncomplete = filters.type === "clients" && clientsError;
+  const exportBlocked = !!loadError || clientsIncomplete;
 
   const applyPreset = (id) => {
     setPreset(id);
@@ -259,7 +263,7 @@ export default function ReportsSection({ orders, clients, products, loadError, o
               key={format.id}
               type="button"
               className={"dash-btn" + (format.fill ? " dash-btn-fill" : "")}
-              disabled={!!busy}
+              disabled={!!busy || exportBlocked}
               onClick={() => runExport(format)}
             >
               {busy === format.id ? "Готовим…" : format.label}
@@ -281,6 +285,15 @@ export default function ReportsSection({ orders, clients, products, loadError, o
         </p>
       )}
 
+      {clientsIncomplete && !loadError && (
+        <LoadErrorBanner
+          text={
+            "Не удалось загрузить карточки клиентов: отчёт построен только по заказам — имена могут отличаться от карточек, " +
+            "а клиенты, добавленные вручную, не видны. Выгрузка в файл недоступна, пока клиенты не загрузятся."
+          }
+          onRetry={onRefresh}
+        />
+      )}
       {loadError ? (
         <p className="crm-empty">Не удалось загрузить заказы. Проверьте сервер и нажмите «Обновить».</p>
       ) : !report.rows.length ? (

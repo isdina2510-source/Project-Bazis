@@ -70,6 +70,27 @@ export async function apiFetch(path, { method = "GET", body, admin = false, pass
   return res;
 }
 
+export function apiError(code, message, status) {
+  const err = new Error(message || code);
+  err.code = code;
+  err.status = status;
+  return err;
+}
+
+/** Сервер (или прокси перед ним) ответил не тем, что ждали: HTML вместо JSON, объект вместо списка. */
+export function invalidResponseError() {
+  return apiError("invalid_response", "Сервер вернул ответ неожиданного вида. Обновите страницу; если не поможет — проверьте сервер."); // i18n-ignore: админка
+}
+
+/** Тело ответа как JSON; не JSON — invalid_response. */
+export async function readJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    throw invalidResponseError();
+  }
+}
+
 export async function parseApiError(res) {
   try {
     const data = await res.json();

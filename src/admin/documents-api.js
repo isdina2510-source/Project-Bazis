@@ -1,5 +1,5 @@
 /** Документы PDF в админке: реквизиты, счета и акты, каталог, отправка. */
-import { apiFetch } from "../lib/api.js";
+import { apiFetch, invalidResponseError, readJson } from "../lib/api.js";
 import { downloadBlob } from "../lib/download.js";
 
 function apiError(code, message, status, extra = {}) {
@@ -29,7 +29,7 @@ async function send(path, options) {
   return res;
 }
 
-const json = async (path, options) => (await send(path, options)).json();
+const json = async (path, options) => readJson(await send(path, options));
 const id = (value) => encodeURIComponent(value);
 
 /** Имя файла из Content-Disposition (filename* с кириллицей приоритетнее). */
@@ -75,7 +75,11 @@ export const KIND_LABELS = { invoice: "Счёт", act: "Акт" };
 /** Ошибки, которые исправляются в разделе «Реквизиты»: не заполнены реквизиты, не читается файл печати или подписи. */
 export const COMPANY_ERROR_CODES = new Set(["company_requisites_missing", "company_asset_unreadable"]);
 
-export const listOrderDocuments = (orderId) => json("/api/orders/" + id(orderId) + "/documents");
+export async function listOrderDocuments(orderId) {
+  const list = await json("/api/orders/" + id(orderId) + "/documents");
+  if (!Array.isArray(list)) throw invalidResponseError();
+  return list;
+}
 
 /** Выписать (или получить действующие) — по документу на каждую валюту заказа. */
 export const issueDocuments = (orderId, kind) =>

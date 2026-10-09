@@ -5,6 +5,7 @@ import { deleteProduct } from "../lib/products-api.js";
 import { downloadCatalog, downloadProductPdf } from "./documents-api.js";
 import { confirmAction, notify } from "./dialogs.jsx";
 import { kindLabel } from "./format.js";
+import LoadErrorBanner from "./LoadErrorBanner.jsx";
 import SendDialog from "./SendDialog.jsx";
 
 function TrashIcon() {
@@ -35,7 +36,19 @@ function StockLine({ stock }) {
   return <p className={"admin-product-stock" + (low ? " is-low" : "")}>Остаток: {stock} шт.</p>;
 }
 
-export default function ProductsSection({ products, onEdit, onDeleted }) {
+/** 09.10.2026, 14:05 — дата копии каталога в браузере. */
+export function formatCopyDate(savedAt) {
+  if (!Number.isFinite(savedAt)) return "неизвестной даты";
+  return new Date(savedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * status: loading | ready | stale (сервер не ответил, показана копия от savedAt) | error (копии нет).
+ * Пока данные не свежие (не ready), товары нельзя создавать, менять и удалять: правка поверх старой копии
+ * затёрла бы чужие изменения цен и остатков.
+ */
+export default function ProductsSection({ products, status = "ready", savedAt = null, onRetry, retrying = false, onEdit, onDeleted }) {
+  const readOnly = status !== "ready";
   const [selected, setSelected] = useState(() => new Set());
   const [showPrices, setShowPrices] = useState(true);
   const [showStock, setShowStock] = useState(false);
@@ -72,6 +85,7 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
   const catalogLabel = selectedIds.length ? "Каталог (" + selectedIds.length + ")" : "Каталог (все)";
 
   const remove = async (product) => {
+    if (readOnly) return;
     const ok = await confirmAction(`Удалить «${product.title || "позицию"}» из каталога? Это действие нельзя отменить.`, {
       title: "Удаление товара",
       confirmLabel: "Удалить",
@@ -99,7 +113,24 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
           </p>
         </div>
       </div>
-      {products.length > 0 && (
+      {status === "error" && (
+        <LoadErrorBanner
+          text="Не удалось загрузить товары с сервера. Список не показан, пока загрузка не пройдёт."
+          onRetry={onRetry}
+          retrying={retrying}
+        />
+      )}
+      {status === "stale" && (
+        <LoadErrorBanner
+          text={
+            "Данные не загружены, показана копия от " + formatCopyDate(savedAt) +
+            ". Создание, изменение и удаление товаров недоступны, пока загрузка не пройдёт."
+          }
+          onRetry={onRetry}
+          retrying={retrying}
+        />
+      )}
+      {status !== "error" && products.length > 0 && (
         <div className="catalog-bar">
           <label className="catalog-check">
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
@@ -130,7 +161,7 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
         </div>
       )}
       <div className="admin-products">
-        {products.length ? (
+        {status === "error" ? null : products.length ? (
           products.map((product) => (
             <article className={"admin-product" + (selected.has(product.id) ? " is-selected" : "")} key={product.id}>
               <label className="admin-product-select">
@@ -152,7 +183,7 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
                 <StockLine stock={product.stock} />
               </div>
               <div className="admin-product-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => onEdit(product)}>
+                <button type="button" className="btn btn-ghost" disabled={readOnly} onClick={() => onEdit(product)}>
                   Выбрать
                 </button>
                 <button
@@ -169,6 +200,7 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
                   className="btn btn-primary admin-btn-icon"
                   aria-label="Удалить"
                   title="Удалить"
+                  disabled={readOnly}
                   onClick={() => remove(product)}
                 >
                   <TrashIcon />
@@ -177,7 +209,7 @@ export default function ProductsSection({ products, onEdit, onDeleted }) {
             </article>
           ))
         ) : (
-          <p className="admin-hint">Пока нет товаров — нажмите «+ Новый товар».</p>
+          <p className="admin-hint">{status === "ready" ? "Пока нет товаров — нажмите «+ Новый товар»." : "Загружаем…"}</p>
         )}
       </div>
       {sending && (

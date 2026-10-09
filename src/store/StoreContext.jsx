@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { isDiscussOnlyProduct, isOutOfStock, isSiteProduct, lineAmount, maxCartQty } from "../lib/catalog.js";
 import { CART_KEY, readCart, writeCart } from "../lib/cart-storage.js";
+import { reportClientError } from "../lib/client-errors.js";
 import { fetchProducts, readCachedProducts } from "../lib/products-api.js";
 import { totalsText } from "../lib/messages.js";
 import { setScrollLocked } from "../lib/smooth-scroll.js";
@@ -14,8 +15,21 @@ function useBodyClass(className, active) {
   }, [className, active]);
 }
 
+/**
+ * Каталог витрины: сначала последняя копия с сервера (если есть), затем свежий список.
+ * productsStatus: loading — ждём сервер; ready — данные свежие; stale — сервер не ответил, показана копия
+ * (цены могут быть устаревшими); error — сервер не ответил и копии нет. Каталога по умолчанию нет:
+ * его цены не совпадают с настоящими, а HTML для поисковиков товаров не содержит (scripts/i18n-html.mjs).
+ */
+function initialCatalog() {
+  const cached = readCachedProducts();
+  return { list: cached ? cached.products : [], status: "loading" };
+}
+
 export function StoreProvider({ children }) {
-  const [allProducts, setProducts] = useState(readCachedProducts);
+  const [catalog, setCatalog] = useState(initialCatalog);
+  const allProducts = catalog.list;
+  const productsStatus = catalog.status;
   const products = useMemo(() => allProducts.filter(isSiteProduct), [allProducts]);
   const [cart, setCart] = useState(readCart);
   const [cartOpen, setCartOpen] = useState(false);
@@ -26,10 +40,12 @@ export function StoreProvider({ children }) {
     let cancelled = false;
     fetchProducts()
       .then((list) => {
-        if (!cancelled) setProducts(list);
+        if (!cancelled) setCatalog({ list, status: "ready" });
       })
-      .catch(() => {
-        // сервер недоступен — остаёмся на кэше / сиде
+      .catch((err) => {
+        if (cancelled) return;
+        reportClientError(err, { kind: "catalog" });
+        setCatalog((prev) => ({ list: prev.list, status: prev.list.length ? "stale" : "error" }));
       });
     return () => {
       cancelled = true;
@@ -38,7 +54,7 @@ export function StoreProvider({ children }) {
 
   const refreshProducts = useCallback(async () => {
     const list = await fetchProducts();
-    setProducts(list);
+    setCatalog({ list, status: "ready" });
     return list.filter(isSiteProduct);
   }, []);
 
@@ -144,6 +160,7 @@ export function StoreProvider({ children }) {
 
   const value = {
     products,
+    productsStatus,
     refreshProducts,
     cart,
     cartItems,

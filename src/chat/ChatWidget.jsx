@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CONTACT_PHONE, getTelegramProfileUrl } from "../lib/catalog.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
+import { reportClientError } from "../lib/client-errors.js";
 import { buildHandoffMessage, whatsappUrl } from "../lib/messages.js";
 import { useStore } from "../store/StoreContext.jsx";
 import { MAX_ATTACHMENTS, formatBytes, prepareAttachment } from "./attachments.js";
@@ -272,7 +273,8 @@ export default function ChatWidget() {
         setQuickSection((prev) => matched.category || prev);
         setAfterConsult(true);
       }
-    } catch {
+    } catch (err) {
+      reportClientError(err, { kind: "chat" });
       setTyping(false);
       push("bot", t("chat.parse_failed"));
       setHandoff(true);
