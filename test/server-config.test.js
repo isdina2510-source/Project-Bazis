@@ -58,6 +58,7 @@ test("LOW-21: check:prod сообщает о ключе ИИ, оповещени
   const content = createSandbox({ "src/content/portfolio.js": PORTFOLIO_STOCK, "src/lib/catalog.js": catalogWith("bazis") });
   try {
     const result = await runServer(content, ["--check-config", "--production"], {
+      SITE_DOMAIN: "example.kz",
       OPENAI_API_KEY: "",
       TELEGRAM_BOT_TOKEN: "",
       TELEGRAM_CHAT_ID: "",
@@ -69,6 +70,31 @@ test("LOW-21: check:prod сообщает о ключе ИИ, оповещени
     assert.match(result.stderr, /CONTACT_TELEGRAM/);
   } finally {
     content.cleanup();
+  }
+});
+
+test("LOW-21: медиасайт без домена (не опубликован) — о стоковом портфолио не предупреждаем", async () => {
+  const content = createSandbox({ "src/content/portfolio.js": PORTFOLIO_STOCK, "src/lib/catalog.js": catalogWith("Dinara_888888") });
+  try {
+    const result = await runServer(content, ["--check-config", "--production"]);
+    assert.match(result.stderr, /Домен сайта не задан/);
+    assert.doesNotMatch(result.stderr, /portfolio\.js/);
+  } finally {
+    content.cleanup();
+  }
+});
+
+test("MED-04: sharp не загружается — check:prod сообщает причину", async () => {
+  const broken = createSandbox({
+    "node_modules/sharp/package.json": '{ "name": "sharp", "main": "index.js" }',
+    "node_modules/sharp/index.js": 'throw new Error("simulated: sharp binary is missing");',
+  });
+  try {
+    const result = await runServer(broken, ["--check-config", "--production"]);
+    assert.equal(result.code, EXIT_CONFIG_ERROR);
+    assert.match(result.stderr, /Модуль sharp не загружается \(simulated/);
+  } finally {
+    broken.cleanup();
   }
 });
 
@@ -91,7 +117,7 @@ test("LOW-21: всё задано — новых предупреждений н
       TELEGRAM_BOT_TOKEN: "123:abc",
       TELEGRAM_CHAT_ID: "-100",
     });
-    for (const word of ["OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "portfolio.js", "CONTACT_TELEGRAM"]) {
+    for (const word of ["OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "portfolio.js", "CONTACT_TELEGRAM", "sharp"]) {
       assert.doesNotMatch(result.stderr, new RegExp(word.replace(".", "\\.")), word);
     }
   } finally {

@@ -143,9 +143,16 @@ test("contentProblems: стоковое портфолио, пустой или 
   assert.equal(telegram("@Bazis").length, 1);
   assert.equal(telegram("").length, 1);
   assert.equal(contentProblems({ portfolio: null, catalog: "// без константы" }).length, 1);
-  assert.equal(contentProblems({ portfolio: 'image: "https://images.unsplash.com/x"', catalog: null }).length, 1);
-  assert.equal(contentProblems({ portfolio: 'image: "images/w1.jpg"', catalog: null }).length, 0);
-  assert.equal(contentProblems({ portfolio: null, catalog: null }).length, 0);
+  const stock = 'image: "https://images.unsplash.com/x"';
+  assert.equal(contentProblems({ portfolio: stock, catalog: null, mediaPublished: true }).length, 1);
+  assert.equal(contentProblems({ portfolio: 'image: "images/w1.jpg"', catalog: null, mediaPublished: true }).length, 0);
+  assert.equal(contentProblems({ portfolio: null, catalog: null, mediaPublished: true }).length, 0);
+});
+
+test("contentProblems: медиасайт не опубликован — стоковое портфолио не проблема", () => {
+  const stock = 'image: "https://images.unsplash.com/x"';
+  assert.equal(contentProblems({ portfolio: stock, catalog: null, mediaPublished: false }).length, 0);
+  assert.equal(contentProblems({ portfolio: stock, catalog: null }).length, 0);
 });
 
 test("протокол от прокси: последний в X-Forwarded-Proto и только с этого компьютера", () => {

@@ -11,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const { CATEGORIES } = require("../shared/catalog.json");
 const { orderTotals, amountInWords, toMinor } = require("./money");
-const { normalizeCompany, COMPANY_FIELDS } = require("./requisites");
+const { normalizeCompany, missingCompanyFields, COMPANY_FIELDS } = require("./requisites");
 const { createImageLoader, parseDataUrlImage, sniffMime } = require("./images");
 const { createRenderer } = require("./render");
 const { localParts } = require("./templates/common");
@@ -19,6 +19,9 @@ const { localParts } = require("./templates/common");
 const KINDS = { invoice: "Счёт", act: "Акт" };
 const COMPANY_KEY = "company";
 const COMPANY_IMAGES = ["stamp", "signature"];
+const COMPANY_IMAGE_NAME_RE = /^(stamp|signature)-[0-9a-f]{20}\.(png|jpg)$/;
+const COMPANY_IMAGE_TITLES = { stamp: "печати", signature: "подписи" };
+const KIND_GENITIVE = { invoice: "счёта", act: "акта" };
 const MAX_COMPANY_IMAGE_BYTES = 1024 * 1024;
 const IMAGE_CONCURRENCY = 4;
 const STATUS_LABELS = { new: "Новый", in_progress: "В работе", done: "Готово", cancelled: "Отмена" };
@@ -57,11 +60,13 @@ async function mapLimit(items, limit, fn) {
 
 /**
  * @param {{ store: ReturnType<typeof import("../db/store").createStore>, rootDir: string, dataDir: string,
- *   log?: Pick<Console, "warn" | "error">, renderer?: { render: Function, close: Function } }} options
+ *   log?: Pick<Console, "warn" | "error">, renderer?: { render: Function, close: Function },
+ *   notifier?: { alert: (key: string, text: string) => void } }} options
  */
 function createDocuments(options) {
   const { store, rootDir, dataDir } = options;
   const log = options.log || console;
+  const notifier = options.notifier || { alert() {} };
   const renderer = options.renderer || createRenderer();
   const companyDir = path.join(dataDir, "company");
   const pdfDir = path.join(dataDir, "documents");
@@ -109,7 +114,7 @@ function createDocuments(options) {
 
   /** Файл печати или подписи из data/company; имя проверяется, чтобы не выйти за папку. */
   function readCompanyAsset(fileName) {
-    if (!fileName || !/^(stamp|signature)-[0-9a-f]{20}\.(png|jpg)$/.test(fileName)) return null;
+    if (!fileName || !COMPANY_IMAGE_NAME_RE.test(fileName)) return null;
     try {
       return fs.readFileSync(path.join(companyDir, fileName));
     } catch {
@@ -124,11 +129,41 @@ function createDocuments(options) {
     return buffer ? { buffer, mime: sniffMime(buffer) || "application/octet-stream" } : null;
   }
 
-  function assetDataUrl(fileName) {
-    const buffer = readCompanyAsset(fileName);
-    if (!buffer) return null;
-    const mime = sniffMime(buffer);
-    return mime === "image/png" || mime === "image/jpeg" ? "data:" + mime + ";base64," + buffer.toString("base64") : null;
+  /**
+   * Печать или подпись для документа: null — не задана (документ без неё допустим).
+   * Задана, но файл не читается — ошибка: документ без печати бухгалтерия не примет.
+   */
+  function companyAsset(kind, fileName) {
+    if (!fileName) return null;
+    const file = path.join(companyDir, path.basename(String(fileName)));
+    let reason;
+    if (!COMPANY_IMAGE_NAME_RE.test(fileName)) {
+      reason = "недопустимое имя файла";
+    } else {
+      try {
+        const buffer = fs.readFileSync(file);
+        const mime = sniffMime(buffer);
+        if (mime === "image/png" || mime === "image/jpeg") return "data:" + mime + ";base64," + buffer.toString("base64");
+        reason = "файл не PNG и не JPEG";
+      } catch (err) {
+        reason = err.code === "ENOENT" ? "файл не найден" : err.message;
+      }
+    }
+    const title = COMPANY_IMAGE_TITLES[kind];
+    log.error(`PDF: файл ${title} не читается (${file}): ${reason}`);
+    notifier.alert(
+      "company_asset:" + kind,
+      `Файл ${title} компании не читается (${file}: ${reason}). Счета и акты не выпускаются, пока его не загрузят заново в разделе «Реквизиты».`
+    );
+    throw docError("company_asset_unreadable", 409, {
+      asset: kind,
+      message: `Файл ${title} не найден — загрузите его заново в разделе «Реквизиты».`,
+    });
+  }
+
+  /** Все заданные картинки компании читаются; иначе — ошибка до присвоения номера. */
+  function companyAssets(assets) {
+    return { stamp: companyAsset("stamp", assets.stamp), signature: companyAsset("signature", assets.signature) };
   }
 
   let logoCache;
@@ -144,6 +179,7 @@ function createDocuments(options) {
           /* следующий вариант */
         }
       }
+      if (!logoCache) log.warn("PDF: логотип brand/logo.png не найден ни в public, ни в dist — в документах будет название компании.");
     }
     return logoCache;
   }
@@ -214,8 +250,23 @@ function createDocuments(options) {
     return prefix + year + "-" + String(seq).padStart(4, "0");
   }
 
+  /** Проверки до присвоения номера: при ошибке номер не расходуется. */
+  function assertIssuable(kind, settings) {
+    const missing = missingCompanyFields(kind, settings.fields);
+    if (missing.length) {
+      throw docError("company_requisites_missing", 400, {
+        fields: missing.map((field) => field.key),
+        message:
+          `Для ${KIND_GENITIVE[kind]} не заполнены реквизиты компании: ${missing.map((field) => field.label).join(", ")}. ` +
+          "Заполните их в разделе «Реквизиты».",
+      });
+    }
+    companyAssets(settings);
+  }
+
   function issueOne(order, kind, bucket, replaces) {
     const settings = companySettings();
+    assertIssuable(kind, settings);
     const source = sourceOf(bucket, buyerFor(order));
     const now = new Date().toISOString();
     const year = localParts(now).year;
@@ -295,7 +346,10 @@ function createDocuments(options) {
     return listForOrder(order.id).find((item) => item.id === fresh.id);
   }
 
-  /** PDF выпущенного документа: собирается из снимка один раз и дальше берётся из data/documents. */
+  /**
+   * PDF выпущенного документа: собирается из снимка один раз и дальше берётся из data/documents.
+   * Если заданная в снимке печать или подпись не читается — ошибка, а не PDF без неё (и в кэш ничего не пишется).
+   */
   async function documentPdf(docId) {
     const doc = store.documents.get(docId, true);
     if (!doc || !doc.snapshot) throw docError("not_found", 404);
@@ -306,14 +360,8 @@ function createDocuments(options) {
       buffer = await fs.promises.readFile(file);
     } catch {
       const snap = doc.snapshot;
-      const assets = snap.assets || {};
-      buffer = await renderer.render(doc.kind, {
-        ...snap,
-        logo: logo(),
-        stamp: assetDataUrl(assets.stamp),
-        signature: assetDataUrl(assets.signature),
-        annulled,
-      });
+      const assets = companyAssets(snap.assets || {});
+      buffer = await renderer.render(doc.kind, { ...snap, logo: logo(), ...assets, annulled });
       await writeAtomic(file, buffer).catch((err) => log.warn("PDF: не удалось сохранить в кэш: " + err.message));
     }
     const suffix = doc.currency !== "KZT" ? " " + doc.currency : "";

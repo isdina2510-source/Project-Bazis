@@ -53,6 +53,7 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
     if (!status) throw err;
     const body = { error: code, message: ERROR_MESSAGES[code] || err.message };
     if (Array.isArray(err.errors)) body.errors = err.errors;
+    if (Array.isArray(err.fields)) body.fields = err.fields;
     sendJson(res, status, body, req);
   }
 
@@ -164,15 +165,27 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
           });
     } catch (err) {
       if (attachment.documentId) {
-        documents.logSend({ documentId: attachment.documentId, channel, recipient: String(body.to || ""), ok: false, error: err.message });
+        logSendSafely({ documentId: attachment.documentId, channel, recipient: String(body.to || ""), ok: false, error: err.message });
       }
       log.warn("PDF: отправка не удалась: " + err.message);
       throw err;
     }
+    // Документ уже у получателя: сбой журнала не должен выглядеть как неудачная отправка, иначе менеджер отправит дубль.
     if (attachment.documentId) {
-      documents.logSend({ documentId: attachment.documentId, channel, recipient: result.recipient, ok: true });
+      logSendSafely({ documentId: attachment.documentId, channel, recipient: result.recipient, ok: true });
     }
     return sendJson(res, 200, { ok: true, ...result }, req);
+  }
+
+  function logSendSafely(entry) {
+    try {
+      documents.logSend(entry);
+    } catch (err) {
+      log.error(
+        `PDF: не удалось записать в журнал отправок (документ ${entry.documentId}, ${entry.channel}, ` +
+          `${entry.ok ? "отправлен" : "не отправлен"}): ${err && err.message}`
+      );
+    }
   }
 
   async function documentsRoute(req, res, docId, sub) {

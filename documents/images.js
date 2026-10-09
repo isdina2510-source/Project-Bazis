@@ -11,15 +11,26 @@ const FETCH_TIMEOUT_MS = 10000;
 const MAX_REMOTE_BYTES = 10 * 1024 * 1024;
 
 let sharpModule;
+let sharpError = "";
 function loadSharp() {
   if (sharpModule === undefined) {
     try {
       sharpModule = require("sharp");
-    } catch {
+    } catch (err) {
       sharpModule = null;
+      sharpError = (err && err.message) || String(err);
+      console.error(
+        "PDF: модуль sharp не загрузился — в PDF попадут только картинки JPEG и PNG, WebP/GIF/AVIF будут пустыми. " +
+          "Переустановите зависимости (npm ci; в Docker — пересоберите образ). Причина: " + sharpError
+      );
     }
   }
   return sharpModule;
+}
+
+/** Загружается ли sharp: для журнала при старте сервера и check:prod. */
+function sharpStatus() {
+  return loadSharp() ? { ok: true, error: "" } : { ok: false, error: sharpError };
 }
 
 function sniffMime(buffer) {
@@ -111,7 +122,9 @@ function createImageLoader(options) {
     }
     // Без sharp вставляем только то, что pdfmake понимает сам.
     const mime = sniffMime(buffer);
-    return mime === "image/jpeg" || mime === "image/png" ? buffer : null;
+    if (mime === "image/jpeg" || mime === "image/png") return buffer;
+    log.warn(`PDF: формат ${mime || "неизвестный"} не поддерживается без sharp — картинка пропущена.`);
+    return null;
   }
 
   /**
@@ -149,4 +162,4 @@ function createImageLoader(options) {
   return { load };
 }
 
-module.exports = { createImageLoader, parseDataUrlImage, sniffMime };
+module.exports = { createImageLoader, parseDataUrlImage, sniffMime, sharpStatus };

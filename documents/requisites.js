@@ -1,6 +1,7 @@
 /**
  * Проверка реквизитов компании и покупателя. Описание полей — shared/requisites.json (его же читает админка).
- * Все поля необязательные: незаполненное печатается в документах прочерком.
+ * Сохранить можно и неполные реквизиты (незаполненное печатается прочерком), но счёт и акт без обязательных
+ * полей (REQUIRED_COMPANY_FIELDS) не выпускаются.
  */
 const { COMPANY_FIELDS, CLIENT_FIELDS, CLIENT_TYPES, EMAIL_PATTERN } = require("../shared/requisites.json");
 
@@ -54,4 +55,28 @@ function normalizeClientRequisites(raw) {
   return { values: { type, ...values }, errors };
 }
 
-module.exports = { COMPANY_FIELDS, CLIENT_FIELDS, normalizeCompany, normalizeClientRequisites };
+/**
+ * Без чего документ нельзя выпускать: по счёту без банковских реквизитов и КБе не заплатить,
+ * в акте (форма Р-1) обязательны наименование и ИИН/БИН исполнителя.
+ */
+const REQUIRED_COMPANY_FIELDS = {
+  invoice: ["name", "bin", "bank", "iik", "bik", "kbe"],
+  act: ["name", "bin"],
+};
+
+/** @returns {Array<{ key: string, label: string }>} незаполненные обязательные поля для вида документа */
+function missingCompanyFields(kind, values) {
+  const required = REQUIRED_COMPANY_FIELDS[kind] || [];
+  return COMPANY_FIELDS.filter((field) => required.includes(field.key) && !String((values || {})[field.key] || "").trim()).map(
+    (field) => ({ key: field.key, label: field.label })
+  );
+}
+
+module.exports = {
+  COMPANY_FIELDS,
+  CLIENT_FIELDS,
+  REQUIRED_COMPANY_FIELDS,
+  normalizeCompany,
+  normalizeClientRequisites,
+  missingCompanyFields,
+};

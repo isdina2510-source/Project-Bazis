@@ -18,6 +18,7 @@ const { createStore } = require("./db/store");
 const { orderTotalText, orderTotalsSummary } = require("./documents/money");
 const { fetchRemoteImage } = require("./security/remote-image");
 const { createDocuments } = require("./documents");
+const { sharpStatus } = require("./documents/images");
 const { createSender } = require("./documents/send");
 const { createDocumentsHttpHandler } = require("./documents/http");
 const { normalizeClientRequisites } = require("./documents/requisites");
@@ -153,12 +154,22 @@ function productionProblems() {
     }
   }
   problems.push(...integrationProblems(process.env));
+  const media = SITES.find((site) => site.id === "media");
   problems.push(
     ...contentProblems({
       portfolio: readSourceFile("src/content/portfolio.js"),
       catalog: readSourceFile("src/lib/catalog.js"),
+      mediaPublished: !!(media && media.publicHosts.length),
     })
   );
+  // Вызывается и при старте сервера: сбой загрузки sharp попадает в журнал сразу, а не при первом PDF.
+  const sharp = sharpStatus();
+  if (!sharp.ok) {
+    problems.push(
+      `Модуль sharp не загружается (${sharp.error}): картинки WebP/GIF в PDF-каталогах будут пустыми. ` +
+        "Выполните npm ci (в Docker — пересоберите образ)."
+    );
+  }
   return problems;
 }
 
@@ -1861,7 +1872,7 @@ server.listen(PORT, HOST, () => {
     });
     runStartupMigrations(store);
     migrateInlineImages(store);
-    documents = createDocuments({ store, rootDir: ROOT, dataDir: DATA_DIR });
+    documents = createDocuments({ store, rootDir: ROOT, dataDir: DATA_DIR, notifier });
   } catch (err) {
     console.error(err.message);
     notifier.failed("ошибка запуска", err);

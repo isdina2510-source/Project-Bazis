@@ -150,7 +150,9 @@ export default function Dashboard({ onLogout }) {
           ))}
         </nav>
 
-        {tab === "crm" && <OrdersSection key="orders" variant="orders" onChanged={loadLeadBadge} />}
+        {tab === "crm" && (
+          <OrdersSection key="orders" variant="orders" onChanged={loadLeadBadge} onOpenCompany={() => setTab("company")} />
+        )}
         {tab === "leads" && <OrdersSection key="leads" variant="leads" onChanged={loadLeadBadge} />}
         {tab === "clients" && (
           <ClientsSection

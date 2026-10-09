@@ -51,7 +51,7 @@ function orderTotalLabel(order) {
   return totals.map((bucket) => formatPrice(bucket.total, bucket.currency)).join(" + ");
 }
 
-function OrderCard({ order, onReload }) {
+function OrderCard({ order, onReload, onOpenCompany }) {
   const [pending, setPending] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const items = Array.isArray(order.items) ? order.items : [];
@@ -199,7 +199,7 @@ function OrderCard({ order, onReload }) {
           </button>
         </div>
       </footer>
-      {docsOpen && !isLead && <OrderDocuments order={order} onOrderChanged={onReload} />}
+      {docsOpen && !isLead && <OrderDocuments order={order} onOrderChanged={onReload} onOpenCompany={onOpenCompany} />}
     </article>
   );
 }
@@ -248,7 +248,7 @@ function useDebounced(value, delay) {
 }
 
 /** Заказы или заявки страницами по PAGE_SIZE: фильтр по статусу и счётчики считает сервер. */
-export default function OrdersSection({ variant = "orders", onChanged }) {
+export default function OrdersSection({ variant = "orders", onChanged, onOpenCompany }) {
   const text = TEXTS[variant] || TEXTS.orders;
   const kind = variant === "leads" ? "leads" : "orders";
   const [filter, setFilter] = useState("all");
@@ -356,7 +356,7 @@ export default function OrdersSection({ variant = "orders", onChanged }) {
       </p>
     );
   } else {
-    content = list.map((order) => <OrderCard key={order.id} order={order} onReload={reload} />);
+    content = list.map((order) => <OrderCard key={order.id} order={order} onReload={reload} onOpenCompany={onOpenCompany} />);
   }
 
   return (

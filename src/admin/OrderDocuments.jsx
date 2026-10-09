@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatPrice } from "../lib/catalog.js";
 import {
+  COMPANY_ERROR_CODES,
   KIND_LABELS,
   downloadDocument,
   issueDocuments,
@@ -151,10 +152,11 @@ function lastSend(doc) {
 }
 
 /** Счета и акты заказа: выпуск, скачивание, перевыпуск и отправка. */
-export default function OrderDocuments({ order, onOrderChanged }) {
+export default function OrderDocuments({ order, onOrderChanged, onOpenCompany }) {
   const [docs, setDocs] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [companyError, setCompanyError] = useState(false);
   const [sending, setSending] = useState(null);
   const [showAnnulled, setShowAnnulled] = useState(false);
 
@@ -174,10 +176,14 @@ export default function OrderDocuments({ order, onOrderChanged }) {
     if (busy) return;
     setBusy(key);
     setError("");
+    setCompanyError(false);
     try {
       await action();
     } catch (err) {
-      if (err.code !== "unauthorized") setError(err.message);
+      if (err.code !== "unauthorized") {
+        setError(err.message);
+        setCompanyError(COMPANY_ERROR_CODES.has(err.code));
+      }
     } finally {
       setBusy("");
     }
@@ -230,6 +236,14 @@ export default function OrderDocuments({ order, onOrderChanged }) {
       {error && (
         <p className="form-inline-error admin-error" role="alert">
           {error}
+          {companyError && onOpenCompany && (
+            <>
+              {" "}
+              <button type="button" className="doc-link" onClick={onOpenCompany}>
+                Открыть раздел «Реквизиты»
+              </button>
+            </>
+          )}
         </p>
       )}
       {docs && docs.length > 0 && (

@@ -23,6 +23,7 @@ async function send(path, options) {
     }
     throw apiError(data.error || "http_" + res.status, data.message || "Ошибка сервера (" + res.status + ")", res.status, {
       errors: Array.isArray(data.errors) ? data.errors : [],
+      fields: Array.isArray(data.fields) ? data.fields : [],
     });
   }
   return res;
@@ -70,6 +71,9 @@ export async function companyImageUrl(kind) {
 /* ---------- счета и акты ---------- */
 
 export const KIND_LABELS = { invoice: "Счёт", act: "Акт" };
+
+/** Ошибки, которые исправляются в разделе «Реквизиты»: не заполнены реквизиты, не читается файл печати или подписи. */
+export const COMPANY_ERROR_CODES = new Set(["company_requisites_missing", "company_asset_unreadable"]);
 
 export const listOrderDocuments = (orderId) => json("/api/orders/" + id(orderId) + "/documents");
 

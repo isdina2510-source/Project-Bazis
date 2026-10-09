@@ -24,11 +24,13 @@ function integrationProblems(env) {
 
 /**
  * Заглушки в исходниках сайта; null — файла нет (в Docker-образе папки src нет, проверка — на компьютере со сборкой).
- * @param {{ portfolio: string | null, catalog: string | null }} sources тексты src/content/portfolio.js и src/lib/catalog.js
+ * Портфолио показывает только «Базис Медиа»: пока у медиасайта нет адреса в интернете, стоковые фото никто не видит.
+ * @param {{ portfolio: string | null, catalog: string | null, mediaPublished?: boolean }} sources тексты
+ *   src/content/portfolio.js и src/lib/catalog.js; mediaPublished — у медиасайта есть публичный домен
  */
-function contentProblems({ portfolio, catalog }) {
+function contentProblems({ portfolio, catalog, mediaPublished = false }) {
   const problems = [];
-  if (portfolio != null && portfolio.includes("images.unsplash.com")) {
+  if (mediaPublished && portfolio != null && portfolio.includes("images.unsplash.com")) {
     problems.push(
       "В портфолио «Базис Медиа» стоковые фото images.unsplash.com (src/content/portfolio.js) — замените реальными работами или скройте блок."
     );
