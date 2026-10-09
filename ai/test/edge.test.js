@@ -71,21 +71,23 @@ test("выключатель считает запросы пользовате�
 });
 
 test("выключатель не застревает, если пауза перед повтором закончилась после дедлайна", async () => {
+  // Пауза 150 мс укладывается в дедлайн 300 мс, если первая попытка заняла меньше 150 мс (запас для медленной
+  // сборки в Docker); блокировка цикла событий с 140 до 340 мс сдвигает конец паузы за дедлайн.
   let first = true;
   const ai = createAiCore({
     provider: provider(async () => {
       if (first) {
         first = false;
         setTimeout(() => {
-          const end = Date.now() + 40;
+          const end = Date.now() + 200;
           while (Date.now() < end) {}
-        }, 60);
-        throw Object.assign(new AiError("ai_upstream_error", 503), { retryable: true, retryAfterMs: 70 });
+        }, 140);
+        throw Object.assign(new AiError("ai_upstream_error", 503), { retryable: true, retryAfterMs: 150 });
       }
       return "ok";
     }),
     features: [echoFeature],
-    config: { ...FAST, deadlineMs: 80, retries: 1, breakerThreshold: 1, breakerCooldownMs: 20 },
+    config: { ...FAST, deadlineMs: 300, retries: 1, breakerThreshold: 1, breakerCooldownMs: 20 },
   });
   await assert.rejects(ai.run("echo", {}), { code: "timeout" });
   await new Promise((r) => setTimeout(r, 100));
