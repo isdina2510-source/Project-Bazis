@@ -36,6 +36,7 @@ const { createClientErrorsHandler } = require("./notify/client-errors");
 const { createFileSender } = require("./runtime/static-file");
 const { createHealthHandler } = require("./runtime/health");
 const { createShutdown, watchStopFile, createCrashHandler } = require("./runtime/shutdown");
+const { createUploadRemover } = require("./runtime/uploads");
 const { version: APP_VERSION } = require("./package.json");
 
 loadEnvFile(path.join(__dirname, ".env"));
@@ -218,7 +219,8 @@ const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 const MAX_DRAIN_BYTES = 64 * 1024 * 1024;
 const BODY_TOO_LARGE_MESSAGE = "Слишком большой запрос: уменьшите или уберите вложения";
 const CATEGORY_IDS = new Set(CATEGORIES.map((item) => item.id));
-const DEFAULT_PRODUCT_IMAGE =
+/** Стоковая картинка, которую старая админка (открытая до обновления вкладка) подставляет вместо «нет фото». */
+const LEGACY_DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=900&q=80";
 const CHAT_RATE_LIMIT = rateLimitChecks.chat.value;
 const CHAT_RATE_WINDOW_MS = rateLimitChecks.chatWindowMs.value;
@@ -261,15 +263,26 @@ const MIME = {
   ".woff2": "font/woff2",
 };
 
+const CURRENCIES = new Set(["KZT", "RUB", "USD"]);
+
+/** Только для чтения старых данных: неизвестная валюта → KZT. Новый ввод проверяет parseCurrency. */
 function normalizeCurrency(value) {
   const code = String(value || "KZT").toUpperCase();
-  return code === "RUB" || code === "USD" || code === "KZT" ? code : "KZT";
+  return CURRENCIES.has(code) ? code : "KZT";
+}
+
+/** Валюта из запроса: не прислали — KZT, неизвестная — undefined (ошибка, а не тихая замена). */
+function parseCurrency(value) {
+  if (value == null || value === "") return "KZT";
+  const code = String(value).trim().toUpperCase();
+  return CURRENCIES.has(code) ? code : undefined;
 }
 
 function normalizeKind(value) {
   return String(value || "service") === "product" ? "product" : "service";
 }
 
+/** Только для чтения старых данных: неизвестный раздел → «management». */
 function normalizeCategory(value) {
   const id = String(value || "").trim();
   return CATEGORY_IDS.has(id) ? id : "management";
@@ -277,15 +290,16 @@ function normalizeCategory(value) {
 
 function normalizeStoredProduct(item) {
   const raw = item && typeof item === "object" ? item : {};
+  const id = String(raw.id || "").trim() || "p" + Date.now();
   return {
-    id: String(raw.id || "").trim() || "p" + Date.now(),
+    id,
     title: String(raw.title || "").trim().slice(0, 120),
     description: String(raw.description || "").trim().slice(0, 500),
     price: roundPrice(raw.price),
     currency: normalizeCurrency(raw.currency),
     kind: normalizeKind(raw.kind),
     category: normalizeCategory(raw.category),
-    image: storedImageValue(raw.image),
+    image: storedImageValue(raw.image, id),
     stock: parseStock(raw.stock) ?? null,
     ...localizedProductFields(raw),
   };
@@ -295,11 +309,18 @@ const MAX_IMAGE_REF_LENGTH = 2000;
 /** data:-картинка из старых данных — до переноса в файл (migrateInlineImages); base64 ≈ 4/3 от MAX_IMAGE_BYTES. */
 const MAX_INLINE_IMAGE_LENGTH = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 100;
 
-/** Ссылка на картинку товара: путь images/… или URL; data: сохраняется только для переноса в файл при запуске. */
-function storedImageValue(value) {
+/**
+ * Ссылка на картинку товара: путь images/… или URL; data: сохраняется только для переноса в файл при запуске.
+ * Пустая строка — фото нет (сайт и PDF покажут нейтральную заглушку).
+ */
+function storedImageValue(value, productId) {
   const image = String(value || "").trim();
-  if (!image) return DEFAULT_PRODUCT_IMAGE;
-  if (image.startsWith("data:")) return image.length <= MAX_INLINE_IMAGE_LENGTH ? image : DEFAULT_PRODUCT_IMAGE;
+  if (!image) return "";
+  if (image.startsWith("data:")) {
+    if (image.length <= MAX_INLINE_IMAGE_LENGTH) return image;
+    console.warn(`Картинка товара ${productId} в старых данных больше ${MAX_IMAGE_BYTES} байт — не перенесена, у товара не будет фото`);
+    return "";
+  }
   return image.slice(0, MAX_IMAGE_REF_LENGTH);
 }
 
@@ -333,18 +354,18 @@ function runStartupMigrations(store) {
 
 /**
  * Старые товары хранили картинку прямо в базе (data:image/…;base64) — это раздувает GET /api/products.
- * При запуске переносим такие картинки в images/uploads; повреждённые заменяем картинкой по умолчанию.
+ * При запуске переносим такие картинки в images/uploads; повреждённые убираем (товар остаётся без фото).
  */
 function migrateInlineImages(store) {
   let moved = 0;
   let replaced = 0;
   for (const product of store.products.list()) {
     if (!String(product.image || "").startsWith("data:")) continue;
-    let image = DEFAULT_PRODUCT_IMAGE;
+    let image = "";
     try {
       image = saveDataUrlImage(product.image);
     } catch (err) {
-      console.warn(`Картинка товара «${product.title}» (${product.id}) повреждена (${err.code || err.message}) — заменена картинкой по умолчанию`);
+      console.warn(`Картинка товара «${product.title}» (${product.id}) повреждена (${err.code || err.message}) — фото убрано`);
     }
     try {
       store.products.update({ ...product, image });
@@ -352,11 +373,11 @@ function migrateInlineImages(store) {
       deleteUploadIfOwned(image);
       throw err;
     }
-    if (image === DEFAULT_PRODUCT_IMAGE) replaced += 1;
+    if (!image) replaced += 1;
     else moved += 1;
   }
   if (moved || replaced) {
-    console.log(`Картинки товаров из базы перенесены в images/uploads: ${moved}, заменены картинкой по умолчанию: ${replaced}`);
+    console.log(`Картинки товаров из базы перенесены в images/uploads: ${moved}, убраны повреждённые: ${replaced}`);
   }
 }
 
@@ -404,24 +425,7 @@ function newProductId() {
   return "p" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
 }
 
-function isUploadPath(imagePath) {
-  const normalized = String(imagePath || "").replace(/\\/g, "/");
-  return normalized.startsWith("images/uploads/");
-}
-
-function deleteUploadIfOwned(imagePath) {
-  if (!isUploadPath(imagePath)) return;
-  const rel = String(imagePath).replace(/\\/g, "/");
-  const full = path.resolve(ROOT, rel);
-  const rootUploads = path.resolve(UPLOADS_DIR);
-  const relative = path.relative(rootUploads, full);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return;
-  try {
-    if (fs.existsSync(full) && fs.statSync(full).isFile()) fs.unlinkSync(full);
-  } catch {
-    // ignore cleanup errors
-  }
-}
+const deleteUploadIfOwned = createUploadRemover({ root: ROOT, uploadsDir: UPLOADS_DIR });
 
 function saveDataUrlImage(dataUrl) {
   const match = String(dataUrl || "").match(
@@ -503,9 +507,11 @@ function imageMagicMatches(buffer, mime) {
   return false;
 }
 
+/** Поля image нет в запросе — картинка прежняя; пустая строка — убрать фото. */
 function resolveProductImage(rawImage, previousImage) {
+  if (rawImage === undefined) return previousImage || "";
   const value = String(rawImage || "").trim();
-  if (!value) return previousImage || DEFAULT_PRODUCT_IMAGE;
+  if (!value) return "";
   if (value.startsWith("data:image/")) {
     return saveDataUrlImage(value);
   }
@@ -545,6 +551,11 @@ function buildProductFromBody(body, previous) {
   }
   const stock = parseStock(keep("stock"));
   if (stock === undefined) throw productError("invalid_stock");
+  // Не прислали — прежнее значение (при чтении старых данных оно нормализуется); прислали неизвестное — ошибка.
+  const currency = body.currency !== undefined ? parseCurrency(body.currency) : previous ? previous.currency : "KZT";
+  if (currency === undefined) throw productError("invalid_currency");
+  const categoryId = body.category !== undefined ? String(body.category || "").trim() : previous ? previous.category : "";
+  if (!CATEGORY_IDS.has(categoryId) && (body.category !== undefined || !previous)) throw productError("invalid_category");
   const image = resolveProductImage(body.image, previous && previous.image);
   return normalizeStoredProduct({
     id: previous && previous.id ? previous.id : newProductId(),
@@ -553,9 +564,9 @@ function buildProductFromBody(body, previous) {
     title_kk: body.title_kk != null ? body.title_kk : previous && previous.title_kk,
     description_kk: body.description_kk != null ? body.description_kk : previous && previous.description_kk,
     price: roundPrice(priceNum),
-    currency: keep("currency"),
+    currency,
     kind: keep("kind"),
-    category: keep("category"),
+    category: categoryId,
     image,
     stock,
   });
@@ -569,6 +580,8 @@ const PRODUCT_ERROR_MESSAGES = {
   stock_held: "Нельзя выключить учёт остатка: товар ещё числится в незакрытых заказах. Отмените их или отметьте выполненными.",
   product_reserved: "Нельзя удалить товар: он ещё числится в незакрытых заказах. Отмените их или отметьте выполненными.",
   invalid_stock: `Остаток — целое число от 0 до ${MAX_STOCK} (или выключите учёт остатка)`,
+  invalid_currency: "Неизвестная валюта: выберите тенге, рубли или доллары. Если список валют в форме другой — обновите страницу.",
+  invalid_category: "Такого раздела нет: выберите раздел из списка. Если список в форме другой — обновите страницу.",
   invalid_image: "Картинка должна быть файлом JPG, PNG, WebP или GIF",
   invalid_image_url: "Ссылка на картинку должна начинаться с https://",
   image_host_blocked: "По этой ссылке картинку загрузить нельзя — укажите адрес в интернете или загрузите файл",
@@ -583,6 +596,11 @@ const PRODUCT_ERROR_MESSAGES = {
 async function localizeProductImage(body, previous) {
   const value = typeof body.image === "string" ? body.image.trim() : "";
   if (!/^https?:\/\//i.test(value) || (previous && value === previous.image)) return null;
+  // Старая вкладка админки шлёт стоковую картинку вместо «без фото» — не качаем её и не зависим от unsplash.
+  if (value === LEGACY_DEFAULT_IMAGE) {
+    body.image = "";
+    return null;
+  }
   const { buffer, mime } = await fetchRemoteImage(value, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 15000 });
   const saved = saveImageBuffer(buffer, mime);
   body.image = saved;
@@ -627,6 +645,8 @@ const PRODUCT_ERROR_STATUS = {
   description_required: 400,
   invalid_price: 400,
   invalid_stock: 400,
+  invalid_currency: 400,
+  invalid_category: 400,
   invalid_image: 400,
   invalid_image_url: 400,
   image_host_blocked: 400,
@@ -955,6 +975,8 @@ function totalsText(items) {
  * Позиции заказа из корзины по каталогу сервера: название, цену и сумму от браузера не берём.
  * Если товара нет, он только для обсуждения или его цена/валюта разошлись с корзиной —
  * catalog_changed: покупатель видел другие условия, сайт обновит каталог и попросит проверить корзину.
+ * Количество не исправляется молча: не целое, меньше 1 или больше предела позиции — qty_out_of_range
+ * (иначе в CRM было бы одно количество, а в сообщении клиента в мессенджер — другое).
  */
 function buildCartItems(rawItems, products) {
   if (!Array.isArray(rawItems) || !rawItems.length) return { error: "items_required" };
@@ -966,22 +988,23 @@ function buildCartItems(rawItems, products) {
     const product = byId.get(String(raw.id || "").trim());
     if (!product || DISCUSS_ONLY_CATEGORIES.has(product.category)) return { error: "catalog_changed" };
     if (raw.price != null && Number(raw.price) !== product.price) return { error: "catalog_changed" };
-    if (raw.currency != null && normalizeCurrency(raw.currency) !== product.currency) return { error: "catalog_changed" };
-    const qty = Math.max(1, Math.floor(Number(raw.qty) || 1));
+    if (raw.currency != null && String(raw.currency).trim().toUpperCase() !== product.currency) return { error: "catalog_changed" };
+    const qty = Number(raw.qty);
+    if (!Number.isInteger(qty) || qty < 1) return { error: "qty_out_of_range" };
     lines.set(product.id, { product, qty: (lines.has(product.id) ? lines.get(product.id).qty : 0) + qty });
   }
-  const items = Array.from(lines.values(), ({ product, qty }) => {
-    const finalQty = allowsCartQty(product) ? Math.min(MAX_CART_QTY, qty) : 1;
-    return {
-      id: product.id,
-      title: product.title,
-      qty: finalQty,
-      price: product.price,
-      currency: product.currency,
-      lineTotal: lineAmount(product.price, finalQty),
-      kind: product.kind,
-    };
-  });
+  for (const { product, qty } of lines.values()) {
+    if (qty > (allowsCartQty(product) ? MAX_CART_QTY : 1)) return { error: "qty_out_of_range" };
+  }
+  const items = Array.from(lines.values(), ({ product, qty }) => ({
+    id: product.id,
+    title: product.title,
+    qty,
+    price: product.price,
+    currency: product.currency,
+    lineTotal: lineAmount(product.price, qty),
+    kind: product.kind,
+  }));
   return { items };
 }
 
@@ -1232,7 +1255,9 @@ async function handleOrdersApi(req, res, orderId, url) {
         const built = buildCartItems(body.items, store.products.list());
         if (built.error) {
           const status = built.error === "catalog_changed" ? 409 : 400;
-          return { status, body: { error: built.error } };
+          const body = { error: built.error };
+          if (built.error === "qty_out_of_range") body.message = `Количество позиции — целое число от 1 до ${MAX_CART_QTY}; для части услуг — только 1`;
+          return { status, body };
         }
         items = built.items;
       }
@@ -1333,7 +1358,13 @@ async function handleOrdersApi(req, res, orderId, url) {
       sendJson(res, 400, { error: err.message, message: "Проверьте скидки, доставку и ставку НДС" }, req);
       return;
     }
-    if (body.status && ORDER_STATUSES.includes(body.status)) fields.status = body.status;
+    if (body.status !== undefined) {
+      if (!ORDER_STATUSES.includes(body.status)) {
+        sendJson(res, 400, { error: "invalid_status", message: "Неизвестный статус заказа — обновите страницу и выберите статус из списка" }, req);
+        return;
+      }
+      fields.status = body.status;
+    }
     if (typeof body.customerName === "string") fields.customerName = body.customerName.trim().slice(0, 120);
     if (typeof body.customerPhone === "string") fields.customerPhone = body.customerPhone.trim().slice(0, 32);
     if (typeof body.note === "string") fields.note = body.note.trim().slice(0, 500);

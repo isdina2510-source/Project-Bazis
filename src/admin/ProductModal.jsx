@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_IMAGE, imageSrc } from "../lib/catalog.js";
+import { imageSrc } from "../lib/catalog.js";
 import { createProduct, updateProduct } from "../lib/products-api.js";
 import { notify } from "./dialogs.jsx";
-import { compressImageFile } from "./image.js";
+import { MAX_PHOTO_BYTES, compressImageFile } from "./image.js";
+
+const PHOTO_ERRORS = {
+  unsupported_format:
+    "Этот формат фото браузер не открывает (например, HEIC с iPhone). Сохраните фото как JPG или PNG и выберите снова.",
+  image_too_large: `Фото слишком большое: даже после сжатия больше ${(MAX_PHOTO_BYTES / 1024 / 1024).toFixed(1)} МБ. Уменьшите разрешение или выберите другой файл.`,
+};
 
 function initialForm(product) {
   if (!product) {
@@ -65,12 +71,12 @@ export default function ProductModal({ product, onClose, onSaved }) {
   const set = (name) => (event) => setForm((prev) => ({ ...prev, [name]: event.target.value }));
 
   const applyPhotoFile = async (file) => {
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file) return;
     try {
       const dataUrl = await compressImageFile(file);
       setForm((prev) => ({ ...prev, image: dataUrl, imageUrl: "" }));
-    } catch {
-      notify("Фото слишком большое. Выберите файл меньше 1.2 МБ или сожмите изображение.");
+    } catch (err) {
+      notify(PHOTO_ERRORS[err && err.message] || "Не удалось прочитать файл фото. Попробуйте другой файл.");
     }
   };
 
@@ -106,7 +112,8 @@ export default function ProductModal({ product, onClose, onSaved }) {
       currency: form.currency,
       kind: form.kind,
       category: form.category,
-      image: form.image.trim() || form.imageUrl.trim() || DEFAULT_IMAGE,
+      // Пусто — товар без фото: сайт и PDF покажут нейтральную заглушку.
+      image: form.image.trim() || form.imageUrl.trim(),
     };
     // Нетронутый остаток не отправляем: иначе сохранение карточки перезаписало бы продажи, прошедшие за это время.
     if (!isEdit) {
@@ -288,6 +295,11 @@ export default function ProductModal({ product, onClose, onSaved }) {
                 setForm((prev) => ({ ...prev, imageUrl: value, image: value.trim() }));
               }}
             />
+            {preview && (
+              <button type="button" className="dash-btn" onClick={() => setForm((prev) => ({ ...prev, image: "", imageUrl: "" }))}>
+                Убрать фото
+              </button>
+            )}
           </div>
 
           {error && (

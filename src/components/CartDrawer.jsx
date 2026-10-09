@@ -25,6 +25,7 @@ const THUMB_WIDTHS = [96, 144];
 const CHECKOUT_ERROR_TEXT = {
   catalog_changed: "cart.status.catalog_changed",
   out_of_stock: "cart.status.out_of_stock",
+  qty_out_of_range: "cart.status.qty_out_of_range",
   rate_limited: "cart.status.rate_limited",
   busy: "cart.status.busy",
   customer_required: "cart.status.invalid",
@@ -194,7 +195,7 @@ export default function CartDrawer() {
         // ignore
       }
       const code = err && err.code;
-      if (code === "catalog_changed" || code === "out_of_stock") {
+      if (code === "catalog_changed" || code === "out_of_stock" || code === "qty_out_of_range") {
         pendingOrderRef.current = null;
         refreshProducts().catch(() => {});
       }

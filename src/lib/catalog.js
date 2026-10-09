@@ -18,9 +18,10 @@ const SINGLE_QTY_TITLE = new RegExp(CART_RULES.singleQtyTitlePattern, "i");
 export const CONTACT_PHONE = "77753899972";
 /** Username Telegram без @ */
 export const CONTACT_TELEGRAM = "Dinara_888888";
-export const DEFAULT_IMAGE =
-  "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=900&q=80";
+/** Товар без фото: нейтральная заглушка из проекта (public/brand), а не стоковая фотография. */
+export const PRODUCT_PLACEHOLDER = "/brand/product-placeholder.svg";
 
+/** Только для отображения уже сохранённых данных; новый ввод сервер проверяет сам (invalid_currency). */
 export function normalizeCurrency(value) {
   const code = String(value || "KZT").toUpperCase();
   return code === "RUB" || code === "USD" || code === "KZT" ? code : "KZT";
@@ -117,7 +118,7 @@ export function normalizeProduct(item) {
     currency: normalizeCurrency(raw.currency),
     kind: normalizeKind(raw.kind),
     category: normalizeCategory(raw.category),
-    image: String(raw.image || DEFAULT_IMAGE).trim() || DEFAULT_IMAGE,
+    image: String(raw.image || "").trim(),
     stock: normalizeStock(raw.stock),
   };
 }
@@ -182,13 +183,13 @@ export function getFeaturedProducts(products, limit = 3) {
  */
 export function imageSrc(src) {
   const value = String(src || "").trim();
-  if (!value) return DEFAULT_IMAGE;
-  if (/^javascript:/i.test(value) || /^data:text\//i.test(value)) return DEFAULT_IMAGE;
+  if (!value) return PRODUCT_PLACEHOLDER;
+  if (/^javascript:/i.test(value) || /^data:text\//i.test(value)) return PRODUCT_PLACEHOLDER;
   if (value.startsWith("data:image/")) return value;
   if (/^https?:\/\//i.test(value)) return value;
   const rel = value.replace(/^\/+/, "");
   if (rel.startsWith("images/") && !rel.includes("..")) return "/" + rel;
-  return DEFAULT_IMAGE;
+  return PRODUCT_PLACEHOLDER;
 }
 
 export function normalizeTelegramUsername(value) {

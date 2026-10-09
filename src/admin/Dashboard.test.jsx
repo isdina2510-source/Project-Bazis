@@ -9,6 +9,7 @@ vi.mock("./CompanySection.jsx", () => ({
 }));
 
 const { default: Dashboard } = await import("./Dashboard.jsx");
+const { DialogHost } = await import("./dialogs.jsx");
 
 const PRODUCT = { id: "p1", title: "Экспресс-аудит", description: "Описание", price: 150000, currency: "KZT", category: "management" };
 
@@ -65,6 +66,29 @@ describe("HIGH-06: клиенты не загрузились — ошибка, 
     openTab("Клиенты");
     await screen.findByText(/Не удалось загрузить клиентов/);
     expect(screen.queryByText(/Пока нет клиентов/)).toBeNull();
+  });
+});
+
+describe("LOW-03: сервер отклонил статус заказа", () => {
+  test("invalid_status — понятное сообщение, а не «проверьте сервер»", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const order = { id: "ord_1", channel: "whatsapp", status: "new", customerName: "Айгерим", items: [], createdAt: "2026-10-01T10:00:00Z" };
+    mockFetch(
+      routes({
+        "GET /api/orders": (url) => (url.includes("kind=") ? { items: [order], nextCursor: null, counts: { all: 1 } } : [order]),
+        "PATCH /api/orders/ord_1": jsonResponse({ error: "invalid_status", message: "Неизвестный статус заказа" }, 400),
+      })
+    );
+    render(
+      <>
+        <Dashboard onLogout={() => {}} />
+        <DialogHost />
+      </>
+    );
+    openTab("Заказы");
+    const select = await screen.findByRole("combobox", { name: "Статус заказа" });
+    fireEvent.change(select, { target: { value: "in_progress" } });
+    await screen.findByText(/Такого статуса заказа нет — обновите страницу/);
   });
 });
 

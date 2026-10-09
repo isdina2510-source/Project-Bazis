@@ -6,6 +6,7 @@
 import { newOrderId, submitPublicOrder } from "../lib/orders-db.js";
 import { SITE_ID } from "../site.js";
 import { buildTranscript, chatCodeFor, clientRequest, findPhone, hasClientMessages } from "./handoff-transcript.js";
+import { forgetLead, isPermanentRejection, rememberLead } from "./lead-outbox.js";
 
 export { hasClientMessages };
 
@@ -17,7 +18,8 @@ export function createChatLeadSession() {
 
 /**
  * Отправить заявку в фоне, не мешая переходу в мессенджер. Ошибки посетителю не показываются:
- * он уже пишет менеджеру, а заявка нужна для учёта.
+ * он уже пишет менеджеру, а заявка нужна для учёта. До ответа сервера заявка лежит в localStorage
+ * (lead-outbox.js): если страницу закрыли или отправка не удалась, она уйдёт при следующем визите.
  */
 export function sendChatLead(session, { history, channel, direction }) {
   if (session.sent || session.sending || !hasClientMessages(history)) return session.sending;
@@ -34,6 +36,7 @@ export function sendChatLead(session, { history, channel, direction }) {
     sourcePage: window.location.pathname,
     site: SITE_ID,
   };
+  rememberLead(body);
   const attempt = () => submitPublicOrder(body, { keepalive: true });
   session.sending = attempt()
     .catch((err) => {
@@ -43,8 +46,12 @@ export function sendChatLead(session, { history, channel, direction }) {
     })
     .then(() => {
       session.sent = true;
+      forgetLead(body.id);
     })
-    .catch((err) => console.warn("Заявка из чата не сохранена в CRM", err)) // i18n-ignore: лог для разработчика
+    .catch((err) => {
+      if (isPermanentRejection(err)) forgetLead(body.id);
+      console.warn("Заявка из чата не сохранена в CRM", err); // i18n-ignore: лог для разработчика
+    })
     .finally(() => {
       session.sending = null;
     });

@@ -1,5 +1,5 @@
 import { apiError, apiFetch, invalidResponseError, parseApiError, readJson } from "./api.js";
-import { DEFAULT_IMAGE, normalizeCategory, normalizeCurrency, normalizeKind, normalizeProduct } from "./catalog.js";
+import { normalizeKind, normalizeProduct } from "./catalog.js";
 
 /** Старый формат — просто массив, без даты. */
 const LEGACY_PRODUCTS_KEY = "bazis_products";
@@ -70,10 +70,12 @@ function buildPayload(product) {
     title: String(product.title || "").trim(),
     description: String(product.description || "").trim(),
     price: String(product.price != null ? product.price : "0"),
-    currency: normalizeCurrency(product.currency),
+    // Валюту и раздел не подменяем: неизвестное значение сервер отклонит с понятным текстом (invalid_currency / invalid_category).
+    currency: String(product.currency || "").trim(),
     kind: normalizeKind(product.kind),
-    category: normalizeCategory(product.category),
-    image: String(product.image || "").trim() || DEFAULT_IMAGE,
+    category: String(product.category || "").trim(),
+    // Пустая строка — товар без фото.
+    image: String(product.image || "").trim(),
   };
 }
 

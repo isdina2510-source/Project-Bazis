@@ -6,8 +6,11 @@
  *  - в коде публичного сайта (src/, кроме админки) нет захардкоженной кириллицы в строках и JSX
  *    (комментарии не считаются; осознанные исключения — пометка i18n-ignore в строке
  *    или блок i18n-ignore-start … i18n-ignore-end);
+ *  - каждый ключ, который код называет строкой ("cart.status.error"), есть в словаре — иначе в продакшене
+ *    посетитель увидел бы сам ключ вместо текста;
  *  - отчёт: сколько строк ещё TODO(kk) и у каких товаров нет title_kk / description_kk.
- * Код выхода 1 — есть ошибки.
+ * Код выхода 1 — есть ошибки. Запускается в npm test и перед npm run build.
+ * --root <папка> — проверить другую копию проекта (для тестов).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,10 +18,13 @@ import { fileURLToPath } from "node:url";
 import { IntlMessageFormat } from "intl-messageformat";
 import { parseAst } from "vite";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rootArg = process.argv.indexOf("--root");
+const ROOT = rootArg > 0 ? path.resolve(process.argv[rootArg + 1]) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
 const TODO_PREFIX = "TODO(kk):";
 const CYRILLIC = /[\u0400-\u04FF]/;
+/** Строка, похожая на ключ словаря: cart.status.error, catalog.category.media.title. */
+const KEY_LIKE = /^[a-z][a-z0-9_]*(\.[a-z0-9_-]+)+$/i;
 const verbose = process.argv.includes("--verbose");
 
 /** Не переводятся в рамках задачи: админка (только ru), офлайн-ответы чат-бота и тесты. */
@@ -92,7 +98,20 @@ function checkDictionaries() {
 
   const todo = Object.entries(dicts.kk).filter(([, value]) => String(value).startsWith(TODO_PREFIX));
   checkSiteOverrides(dicts, asts, locales);
-  return { total: Object.keys(dicts.ru).length, todo };
+  return { total: Object.keys(dicts.ru).length, todo, keys: Object.keys(dicts.ru) };
+}
+
+/** Ключи, которые код называет строкой, но которых нет в ru.json (и которые не префикс существующих ключей). */
+function createKeyChecker(keys) {
+  const known = new Set(keys);
+  const prefixes = new Set();
+  const namespaces = new Set();
+  keys.forEach((key) => {
+    const parts = key.split(".");
+    namespaces.add(parts[0]);
+    for (let i = 1; i < parts.length; i++) prefixes.add(parts.slice(0, i).join("."));
+  });
+  return (text) => KEY_LIKE.test(text) && namespaces.has(text.split(".")[0]) && !known.has(text) && !prefixes.has(text);
 }
 
 /** locales/sites/<сайт>.<язык>.json — только ключи общего словаря с теми же плейсхолдерами. */
@@ -162,11 +181,11 @@ function ignoredLines(lines) {
   return ignored;
 }
 
-/** Обход ESTree: строки, шаблоны, регэкспы и текст JSX с кириллицей. */
-function findCyrillic(node, hits) {
+/** Обход ESTree: строки, шаблоны, регэкспы и текст JSX с кириллицей; строковые литералы — неизвестные ключи. */
+function findCyrillic(node, hits, missingKeys, isMissingKey) {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
-    node.forEach((child) => findCyrillic(child, hits));
+    node.forEach((child) => findCyrillic(child, hits, missingKeys, isMissingKey));
     return;
   }
   let text = null;
@@ -174,12 +193,15 @@ function findCyrillic(node, hits) {
   else if (node.type === "TemplateElement") text = node.value && (node.value.cooked ?? node.value.raw);
   else if (node.type === "JSXText") text = node.value;
   if (text && CYRILLIC.test(text)) hits.push({ start: node.start, text: text.trim() });
+  if (node.type === "Literal" && !node.regex && typeof node.value === "string" && isMissingKey(node.value)) {
+    missingKeys.push({ start: node.start, text: node.value });
+  }
   Object.entries(node).forEach(([key, value]) => {
-    if (key !== "type" && value && typeof value === "object") findCyrillic(value, hits);
+    if (key !== "type" && value && typeof value === "object") findCyrillic(value, hits, missingKeys, isMissingKey);
   });
 }
 
-function checkSources() {
+function checkSources(isMissingKey) {
   let count = 0;
   listSourceFiles(SRC).forEach((file) => {
     const code = fs.readFileSync(file, "utf8");
@@ -205,12 +227,18 @@ function checkSources() {
     }
     const ignored = ignoredLines(lines);
     const hits = [];
-    findCyrillic(ast, hits);
+    const missingKeys = [];
+    findCyrillic(ast, hits, missingKeys, isMissingKey);
     hits.forEach(({ start, text }) => {
       const line = lineOf(start);
       if (ignored.has(line)) return;
       count += 1;
       errors.push(`${rel(file)}:${line} — строка не из словаря: «${text.slice(0, 70)}»`);
+    });
+    missingKeys.forEach(({ start, text }) => {
+      const line = lineOf(start);
+      if (ignored.has(line)) return;
+      errors.push(`${rel(file)}:${line} — ключа ${text} нет в словаре ru.json/kk.json`);
     });
   });
   return count;
@@ -241,7 +269,7 @@ async function checkContent() {
   const catalogFile = path.join(ROOT, "shared/catalog.json");
   const dbFile = path.join(ROOT, "data/bazis.db");
   const sources = [
-    [catalogFile, readJson(catalogFile).DEFAULT_PRODUCTS || []],
+    [catalogFile, fs.existsSync(catalogFile) ? readJson(catalogFile).DEFAULT_PRODUCTS || [] : []],
     [dbFile, await readDbProducts(dbFile)],
   ];
   const missing = [];
@@ -255,7 +283,7 @@ async function checkContent() {
 }
 
 const dict = checkDictionaries();
-const hardcoded = checkSources();
+const hardcoded = checkSources(createKeyChecker(dict.keys));
 const content = await checkContent();
 
 if (dict.todo.length) {

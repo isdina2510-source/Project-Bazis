@@ -30,7 +30,7 @@ function itemRow(item, opts) {
   return [
     item.image
       ? { image: item.image, fit: [118, 88], alignment: "center" }
-      : { text: "", fillColor: COLORS.soft },
+      : { text: "Без фото", style: "meta", alignment: "center", fillColor: COLORS.soft, margin: [0, 36, 0, 36] },
     { stack: details },
   ];
 }
