@@ -17,6 +17,11 @@ function Api([string]$method, [string]$path, $body = $null) {
   if ($r.Headers["Content-Type"] -like "application/json*") { return ([Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json) }
   return $r
 }
+# Заказы принимаются только с антиспам-токеном; в тестовом контейнере доказательство работы выключено (ORDER_POW_BITS=0).
+function New-Proof {
+  $c = Api GET "/api/orders/challenge"
+  return @{ token = $c.token; nonce = "0" }
+}
 function Wait-Healthy {
   for ($i = 0; $i -lt 60; $i++) {
     $s = docker inspect $name --format "{{.State.Health.Status}}" 2>$null
@@ -28,7 +33,7 @@ function Wait-Healthy {
 
 docker rm -f $name 2>$null | Out-Null; docker volume rm $vol 2>$null | Out-Null
 try {
-  docker run -d --name $name --init -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -v "${vol}:/app/data" bazis-site | Out-Null
+  docker run -d --name $name --init -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -e ORDER_POW_BITS=0 -e ORDER_MIN_FILL_MS=0 -v "${vol}:/app/data" bazis-site | Out-Null
   Check "контейнер стал healthy" (Wait-Healthy)
 
   $products = Api GET "/api/products"
@@ -37,14 +42,14 @@ try {
   $prod = $list | ? { $discussOnly -notcontains $_.category -and ($_.stock -eq $null -or $_.stock -gt 0) } | Select-Object -First 1
   Check "каталог товаров" ($prod -ne $null) "(товаров: $($list.Count))"
 
-  $order = Api POST "/api/orders" @{ customerName = "Тест Докер"; customerPhone = "+7 701 000 00 00"; channel = "whatsapp"; items = @(@{ id = $prod.id; qty = 1 }) }
+  $order = Api POST "/api/orders" @{ customerName = "Тест Докер"; customerPhone = "+7 701 000 00 00"; channel = "whatsapp"; items = @(@{ id = $prod.id; qty = 1 }); proof = (New-Proof) }
   Check "заказ создан" ([bool]$order.id) "($($order.id))"
   $got = Api GET "/api/orders/$($order.id)"
   Check "заказ читается, кириллица цела" ($got.customerName -eq "Тест Докер")
   $upd = Api PATCH "/api/orders/$($order.id)" @{ status = "in_progress" }
   Check "статус «в работе»" ($upd.status -eq "in_progress")
 
-  $lead = Api POST "/api/orders" @{ customerName = "Тест Заявка"; customerPhone = "+7 701 000 00 01"; channel = "site"; lead = @{ direction = $prod.category; comment = "Проверка Docker" } }
+  $lead = Api POST "/api/orders" @{ customerName = "Тест Заявка"; customerPhone = "+7 701 000 00 01"; channel = "site"; lead = @{ direction = $prod.category; comment = "Проверка Docker" }; proof = (New-Proof) }
   Check "заявка с сайта создана" ([bool]$lead.id)
   $pdf = Api GET "/api/orders/$($lead.id)/lead.pdf"
   $sig = [Text.Encoding]::ASCII.GetString($pdf.RawContentStream.ToArray()[0..3])

@@ -27,6 +27,8 @@ const { securityHeaders, isAdminPath } = require("./security/headers");
 const { loadEnvFile } = require("./config/env");
 const { resolveSites, isLocalHostname } = require("./config/sites");
 const { parseTrustProxy, isProxied, clientAddress, forwardedProto } = require("./config/proxy");
+const { readNumber, readTimeZone } = require("./config/values");
+const { integrationProblems, contentProblems } = require("./config/production");
 const { createOrderGuard, loadOrderGuardConfig } = require("./antispam/order-guard");
 const { createNotifier, scrub } = require("./notify");
 
@@ -55,6 +57,15 @@ const EXIT_CONFIG_ERROR = 4;
 const adminPasswordCheck = checkAdminPassword(process.env.ADMIN_PASSWORD);
 const sitesCheck = resolveSites(SITES_CONFIG, process.env);
 const trustProxyCheck = parseTrustProxy(process.env.TRUST_PROXY);
+/** Опечатка вроде 30/min дала бы NaN, а сравнение с NaN всегда ложно — лимит молча отключился бы. */
+const rateLimitChecks = {
+  chat: readNumber(process.env, "CHAT_RATE_LIMIT", 20, { min: 1 }),
+  chatWindowMs: readNumber(process.env, "CHAT_RATE_WINDOW_MS", 60 * 1000, { min: 1000 }),
+  admin: readNumber(process.env, "ADMIN_RATE_LIMIT", 30, { min: 1 }),
+  adminWindowMs: readNumber(process.env, "ADMIN_RATE_WINDOW_MS", 60 * 1000, { min: 1000 }),
+};
+/** Пояс для дат и года нумерации документов (documents/templates/common.js читает ту же переменную). */
+const documentsTzCheck = readTimeZone(process.env, "DOCUMENTS_TZ", "Asia/Almaty");
 const configErrors = [
   adminPasswordCheck.ok
     ? ""
@@ -62,6 +73,8 @@ const configErrors = [
       "регистр букв учитывается.",
   ...sitesCheck.errors,
   trustProxyCheck.ok ? "" : trustProxyCheck.error,
+  ...Object.values(rateLimitChecks).map((check) => (check.ok ? "" : check.error)),
+  documentsTzCheck.ok ? "" : documentsTzCheck.error,
 ].filter(Boolean);
 if (configErrors.length) {
   console.error("Сервер не запущен — исправьте .env и запустите снова:\n" + configErrors.map((err) => "  • " + err).join("\n"));
@@ -139,7 +152,24 @@ function productionProblems() {
       );
     }
   }
+  problems.push(...integrationProblems(process.env));
+  problems.push(
+    ...contentProblems({
+      portfolio: readSourceFile("src/content/portfolio.js"),
+      catalog: readSourceFile("src/lib/catalog.js"),
+    })
+  );
   return problems;
+}
+
+/** Исходник сайта для проверки заглушек; null — файла нет (в Docker-образе только сборка). */
+function readSourceFile(rel) {
+  try {
+    return fs.readFileSync(path.join(ROOT, rel), "utf8");
+  } catch (err) {
+    if (err && err.code === "ENOENT") return null;
+    throw err;
+  }
 }
 
 if (process.argv.includes("--check-config")) {
@@ -166,10 +196,10 @@ const BODY_TOO_LARGE_MESSAGE = "Слишком большой запрос: ум
 const CATEGORY_IDS = new Set(CATEGORIES.map((item) => item.id));
 const DEFAULT_PRODUCT_IMAGE =
   "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=900&q=80";
-const CHAT_RATE_LIMIT = Number(process.env.CHAT_RATE_LIMIT || 20);
-const CHAT_RATE_WINDOW_MS = Number(process.env.CHAT_RATE_WINDOW_MS || 60 * 1000);
-const ADMIN_RATE_LIMIT = Number(process.env.ADMIN_RATE_LIMIT || 30);
-const ADMIN_RATE_WINDOW_MS = Number(process.env.ADMIN_RATE_WINDOW_MS || 60 * 1000);
+const CHAT_RATE_LIMIT = rateLimitChecks.chat.value;
+const CHAT_RATE_WINDOW_MS = rateLimitChecks.chatWindowMs.value;
+const ADMIN_RATE_LIMIT = rateLimitChecks.admin.value;
+const ADMIN_RATE_WINDOW_MS = rateLimitChecks.adminWindowMs.value;
 const MAX_CART_QTY = CART_RULES.maxQty;
 const DISCUSS_ONLY_CATEGORIES = new Set(CART_RULES.discussOnlyCategories);
 const SINGLE_QTY_IDS = new Set(CART_RULES.singleQtyIds);
@@ -1094,7 +1124,8 @@ async function handleOrdersApi(req, res, orderId, url) {
     const fingerprint = (fromChat ? "chat:" : "") + orderFingerprint(channel, body, leadCategory, rawLead);
     // Без телефона лимиты «на номер» считаются по адресу, иначе все анонимные заявки делили бы один счётчик.
     const limitKey = phoneDigits || "anon:" + ip;
-    const guard = isAdmin(req) ? { ok: true } : orderGuard.check({ ip, phone: limitKey, fingerprint, body });
+    // Без исключения для админа: иначе ответ на X-Admin-Password выдавал бы, верен ли пароль, в обход лимита неверных попыток.
+    const guard = orderGuard.check({ ip, phone: limitKey, fingerprint, body });
     if (!guard.ok) {
       if (guard.status === 429) res.setHeader("Retry-After", "600");
       sendJson(res, guard.status, { error: guard.error, message: guard.message }, req);

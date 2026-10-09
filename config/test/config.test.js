@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseSiteDomain, resolveSites } = require("../sites");
 const { parseTrustProxy, clientAddress, forwardedProto, isProxied } = require("../proxy");
+const { readNumber, readTimeZone } = require("../values");
+const { integrationProblems, contentProblems } = require("../production");
 const sitesConfig = require("../../shared/sites.json");
 
 const site = (id) => (resolved) => resolved.sites.find((item) => item.id === id);
@@ -105,6 +107,45 @@ test("адрес посетителя: заголовку не доверяем 
   assert.equal(clientAddress(req("127.0.0.1", { "x-forwarded-for": "203.0.113.7" }), false), "127.0.0.1");
   assert.equal(clientAddress(req("192.168.1.5", { "x-forwarded-for": "203.0.113.7" }), true), "192.168.1.5");
   assert.equal(clientAddress(req("127.0.0.1", { "x-forwarded-for": "not-an-ip" }), true), "127.0.0.1");
+});
+
+test("readNumber: пусто — по умолчанию, число в границах — оно, иначе ошибка с именем переменной", () => {
+  assert.deepEqual(readNumber({}, "X_LIMIT", 20, { min: 1 }), { ok: true, value: 20 });
+  assert.deepEqual(readNumber({ X_LIMIT: "  " }, "X_LIMIT", 20, { min: 1 }), { ok: true, value: 20 });
+  assert.deepEqual(readNumber({ X_LIMIT: " 45 " }, "X_LIMIT", 20, { min: 1 }), { ok: true, value: 45 });
+  for (const bad of ["30/min", "30 шт", "1 000", "abc", "Infinity", "0", "101"]) {
+    const result = readNumber({ X_LIMIT: bad }, "X_LIMIT", 20, { min: 1, max: 100 });
+    assert.equal(result.ok, false, bad);
+    assert.equal(result.value, 20, bad);
+    assert.match(result.error, /^X_LIMIT=/, bad);
+  }
+});
+
+test("readTimeZone: пусто — по умолчанию, известный пояс — он, опечатка — ошибка", () => {
+  assert.deepEqual(readTimeZone({}, "TZ_X", "Asia/Almaty"), { ok: true, value: "Asia/Almaty" });
+  assert.deepEqual(readTimeZone({ TZ_X: "Europe/Moscow" }, "TZ_X", "Asia/Almaty"), { ok: true, value: "Europe/Moscow" });
+  const bad = readTimeZone({ TZ_X: "Asia/Almati" }, "TZ_X", "Asia/Almaty");
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /TZ_X=Asia\/Almati/);
+});
+
+test("integrationProblems: ключ ИИ и оба параметра Telegram", () => {
+  assert.equal(integrationProblems({ OPENAI_API_KEY: "k", TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "1" }).length, 0);
+  const missing = integrationProblems({ OPENAI_API_KEY: " ", TELEGRAM_BOT_TOKEN: "t" }).join("\n");
+  assert.match(missing, /OPENAI_API_KEY/);
+  assert.match(missing, /TELEGRAM_CHAT_ID/);
+});
+
+test("contentProblems: стоковое портфолио, пустой или заглушечный CONTACT_TELEGRAM; нет файлов — нет проверки", () => {
+  const telegram = (value) => contentProblems({ portfolio: null, catalog: `export const CONTACT_TELEGRAM = "${value}";` });
+  assert.equal(telegram("Dinara_888888").length, 0);
+  assert.equal(telegram("bazis").length, 1);
+  assert.equal(telegram("@Bazis").length, 1);
+  assert.equal(telegram("").length, 1);
+  assert.equal(contentProblems({ portfolio: null, catalog: "// без константы" }).length, 1);
+  assert.equal(contentProblems({ portfolio: 'image: "https://images.unsplash.com/x"', catalog: null }).length, 1);
+  assert.equal(contentProblems({ portfolio: 'image: "images/w1.jpg"', catalog: null }).length, 0);
+  assert.equal(contentProblems({ portfolio: null, catalog: null }).length, 0);
 });
 
 test("протокол от прокси: последний в X-Forwarded-Proto и только с этого компьютера", () => {
