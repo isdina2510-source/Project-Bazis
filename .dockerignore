@@ -8,6 +8,10 @@ src/generated/
 # Данные, секреты и журналы — не в образ: данные живут в томах Docker, настройки приходят из .env (docker-compose.yml).
 .env
 .env.*
+*.pem
+*.key
+*.pfx
+*.p12
 data/
 data-*/
 images/uploads/

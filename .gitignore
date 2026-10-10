@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.pfx
+*.p12
 
 # Данные: база, документы, загруженные картинки, резервные копии
 data/
@@ -36,3 +40,14 @@ images/optimized/
 src/generated/
 deploy/generated/
 .e2e-totals/
+coverage/
+
+# Системные и редакторские файлы
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Личные заметки
+help.txt
