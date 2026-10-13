@@ -14,6 +14,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { IntlMessageFormat } from "intl-messageformat";
 import { parseAst } from "vite";
@@ -244,39 +245,41 @@ function checkSources(isMissingKey) {
   return count;
 }
 
-/** Каталог из базы сайта (data/bazis.db); без базы или на старом Node — пропускаем. */
-async function readDbProducts(file) {
-  if (!fs.existsSync(file)) return [];
-  const emitWarning = process.emitWarning;
-  process.emitWarning = () => {};
+/**
+ * Каталог из базы сайта — только если DATABASE_URL задан в окружении (postgres://…): без него, при недоступной
+ * базе или в базе без таблиц сайта товары из базы не проверяются (отчёт по ним — лишь предупреждение).
+ */
+async function readDbProducts() {
+  const url = process.env.DATABASE_URL || "";
+  if (!/^postgres(ql)?:\/\//i.test(url)) return [];
+  let db;
   try {
-    const { DatabaseSync } = await import("node:sqlite");
-    const db = new DatabaseSync(file, { readOnly: true });
-    try {
-      return db.prepare("SELECT id, title, description, title_kk, description_kk FROM products ORDER BY sort_order").all();
-    } finally {
-      db.close();
-    }
+    const require = createRequire(import.meta.url);
+    const { openDatabase } = require(path.join(ROOT, "db", "connection.js"));
+    db = await openDatabase(url, { waitMs: 0, log: { warn() {}, log() {}, error() {} } });
+    const { rows } = await db.query(
+      "SELECT id, title, description, title_kk, description_kk FROM products ORDER BY sort_order, row_no"
+    );
+    return rows;
   } catch (err) {
-    console.warn(`⚠ Не удалось прочитать товары из ${rel(file)}: ${err.message}`);
+    console.warn(`⚠ Не удалось прочитать товары из базы: ${err.message}`);
     return [];
   } finally {
-    process.emitWarning = emitWarning;
+    if (db) await db.close().catch(() => {});
   }
 }
 
 async function checkContent() {
   const catalogFile = path.join(ROOT, "shared/catalog.json");
-  const dbFile = path.join(ROOT, "data/bazis.db");
   const sources = [
-    [catalogFile, fs.existsSync(catalogFile) ? readJson(catalogFile).DEFAULT_PRODUCTS || [] : []],
-    [dbFile, await readDbProducts(dbFile)],
+    [rel(catalogFile), fs.existsSync(catalogFile) ? readJson(catalogFile).DEFAULT_PRODUCTS || [] : []],
+    ["база (DATABASE_URL)", await readDbProducts()],
   ];
   const missing = [];
-  sources.forEach(([file, list]) => {
+  sources.forEach(([where, list]) => {
     list.forEach((item) => {
       const fields = ["title", "description"].filter((field) => item[field] && !String(item[field + "_kk"] || "").trim());
-      if (fields.length) missing.push(`${rel(file)}: ${item.id} «${item.title}» — нет ${fields.map((f) => f + "_kk").join(", ")}`);
+      if (fields.length) missing.push(`${where}: ${item.id} «${item.title}» — нет ${fields.map((f) => f + "_kk").join(", ")}`);
     });
   });
   return missing;

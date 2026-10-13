@@ -98,8 +98,8 @@ test("MED-15: ошибка запуска пишется со стеком, а �
   try {
     const { code, stdout, stderr } = await runServer(sandbox, [], { PORT: "0" });
     assert.equal(code, 1, stdout + stderr);
-    assert.match(stderr, /Сервер не запустился: Error: База .* повреждена/);
-    assert.match(stderr, /\n\s+at .*store\.js/, "в журнале есть стек");
+    assert.match(stderr, /Сервер не запустился: Error: Старая база .* повреждена/);
+    assert.match(stderr, /\n\s+at .*db[\\/]sqlite-import\.js/, "в журнале есть стек");
   } finally {
     sandbox.cleanup();
   }

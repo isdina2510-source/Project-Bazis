@@ -1,5 +1,5 @@
-﻿# Копии данных сайта вне Docker: база, выпущенные документы и загруженные картинки — в обычные папки Windows.
-# Резервные копии, которые делает сам сервер (data/backups), лежат в том же томе Docker, что и база: они не спасут,
+﻿# Копии данных сайта вне Docker: база PostgreSQL, выпущенные документы, печать и подпись, загруженные картинки —
+# в обычные папки Windows. Резервные копии, которые делает сам сервер (data/backups), лежат в томе Docker: они не спасут,
 # если удалить тома (docker compose down -v), сбросить Docker Desktop или потерять диск. Эти копии — спасут.
 #
 #   install   — задача планировщика «Bazis Backup» (каждый день в 03:00, пропущенный запуск — при первой возможности)
@@ -7,11 +7,13 @@
 #   run       — сделать копию сейчас (без -Target — в папки, заданные при установке);
 #   status    — задача и последние копии в каждой папке;
 #   restore   — восстановить данные из копии (-From <папка копии>; без него — самая свежая), перед этим текущие данные
-#               сохраняются в data-before-restore-<дата>;
+#               сохраняются такой же копией в data-before-restore-<дата> (при сбое восстановления они возвращаются);
 #   uninstall — удалить задачу (сами копии остаются).
 #
-# Копия — папка bazis-<дата_время> с data\bazis.db, data\documents, uploads и manifest.json (размер и SHA-256 каждого
-# файла, число записей). Копия засчитывается, только если после переноса в папку все контрольные суммы совпали;
+# Копия — папка bazis-<дата_время> с database.json.gz (вся база, scripts/backup-snapshot.js), data\documents, data\company,
+# uploads и manifest.json (размер и SHA-256 каждого файла, число записей). Пока данные не перенесены из SQLite (до первого
+# запуска новой версии), вместо database.json.gz копируется data\bazis.db. Снимок делается во временном контейнере сайта
+# (docker compose run) — сайт и база продолжают работать. Копия засчитывается, только если после переноса в папку все контрольные суммы совпали;
 # незавершённая копия лежит как _incomplete-<дата> и удаляется следующим запуском. Хранятся последние -Keep копий.
 # Если копия не удалась, в папке появляется BACKUP-FAILED.txt с причиной; удачная копия его убирает.
 param(
@@ -26,7 +28,6 @@ $ErrorActionPreference = "Stop"
 $TaskName = "Bazis Backup"
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root "docker-compose.yml"
-$SnapshotScript = Join-Path $PSScriptRoot "backup-snapshot.js"
 $LogDir = Join-Path $Root "logs"
 $LogFile = Join-Path $LogDir "backup.log"
 # Имена закреплены в docker-compose.yml (name: project, image: bazis-site).
@@ -89,6 +90,7 @@ function Assert-DockerData {
   if (-not (Test-Path (Join-Path $Root "data\DATA-MOVED.txt"))) {
     throw "Рабочие данные — в папке data, а не в Docker (switch-to-docker.bat не выполнялся): этот скрипт копирует данные из Docker."
   }
+  # Тома базы PostgreSQL (project_bazis-pg) до первого запуска новой версии ещё нет — данные тогда в bazis.db тома data.
   foreach ($volume in @($DataVolume, $UploadsVolume)) {
     if ((Invoke-Docker volume inspect $volume).Code -ne 0) { throw "Нет тома Docker $volume — данные сайта не найдены." }
   }
@@ -149,25 +151,20 @@ function Test-BackupFolder([string]$Dir) {
   $manifest
 }
 
-function New-HelperName([string]$Kind) {
-  "bazis-$Kind-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + (Get-Random -Maximum 10000)
+# Разовый контейнер сайта (docker compose run): тома данных и DATABASE_URL — как у сайта, postgres запускается, если стоит.
+# Сервер в нём не запускается; работающий сайт не останавливается.
+function Invoke-Helper([string[]]$Mounts, [string[]]$Command) {
+  $volumeArgs = @("-v", "${PSScriptRoot}:/scripts:ro")
+  foreach ($mount in $Mounts) { $volumeArgs += @("-v", $mount) }
+  $runArgs = @("compose", "-f", $ComposeFile, "run", "--rm", "-T", "--user", "root") + $volumeArgs + @("bazis") + $Command
+  Invoke-Docker @runArgs
 }
 
-# Снимок во временном контейнере из образа сайта с томами данных; работающий сайт не останавливается.
+# Снимок базы и файлов прямо в папку $Staging на этом компьютере.
 function New-Snapshot([string]$Staging) {
-  $name = New-HelperName "backup"
-  try {
-    Invoke-Checked "Подготовка снимка" create --name $name `
-      -v "${DataVolume}:/app/data" -v "${UploadsVolume}:/app/images/uploads:ro" `
-      $Image node --no-warnings /tmp/backup-snapshot.js snapshot /tmp/snapshot | Out-Null
-    Invoke-Checked "Подготовка снимка" cp $SnapshotScript "${name}:/tmp/backup-snapshot.js" | Out-Null
-    $run = Invoke-Docker start -a $name
-    if ($run.Code -ne 0 -or $run.Output -notmatch "(?m)^ok\r?$") { throw "Снимок не сделан: $($run.Output)" }
-    New-Item -ItemType Directory -Force $Staging | Out-Null
-    Invoke-Checked "Копирование снимка из Docker" cp "${name}:/tmp/snapshot/." $Staging | Out-Null
-  } finally {
-    Invoke-Docker rm -f $name | Out-Null
-  }
+  New-Item -ItemType Directory -Force $Staging | Out-Null
+  $run = Invoke-Helper @("${Staging}:/snapshot") @("node", "--no-warnings", "/scripts/backup-snapshot.js", "snapshot", "/snapshot")
+  if ($run.Code -ne 0 -or $run.Output -notmatch "(?m)^ok\r?$") { throw "Снимок не сделан: $($run.Output)" }
 }
 
 function Remove-OldBackups([string]$Dir, [string]$Current) {
@@ -249,19 +246,18 @@ function Wait-Healthy {
   $false
 }
 
-# Вернуть в тома данные, сохранённые перед восстановлением (папки data и uploads как есть, без manifest.json).
-function Restore-Raw([string]$Dir) {
-  $name = New-HelperName "rollback"
-  try {
-    Invoke-Checked "Возврат прежних данных" create --name $name --user root `
-      -v "${DataVolume}:/app/data" -v "${UploadsVolume}:/app/images/uploads" `
-      $Image sh -c ("set -e; find /app/data /app/images/uploads -mindepth 1 -delete; " +
-        "cp -r /rollback/data/. /app/data/; cp -r /rollback/uploads/. /app/images/uploads/; chown -R node:node /app/data /app/images/uploads") | Out-Null
-    Invoke-Checked "Возврат прежних данных" cp "$Dir\." "${name}:/rollback" | Out-Null
-    Invoke-Checked "Возврат прежних данных" start -a $name | Out-Null
-  } finally {
-    Invoke-Docker rm -f $name | Out-Null
-  }
+# Данные из копии $Dir — в базу и тома: проверка копии, файлы документов, печати и картинок, затем база одной транзакцией,
+# в конце сверка восстановленного с manifest.json. Копия времён SQLite (data\bazis.db) переносится в PostgreSQL.
+# Печать и подпись не удаляются, а дополняются: имена файлов — по хешу содержимого, а в старых копиях папки company нет.
+# Возвращает результат docker (Code, Output).
+function Restore-Snapshot([string]$Dir) {
+  $tool = "node --no-warnings /scripts/backup-snapshot.js"
+  Invoke-Helper @("${Dir}:/restore:ro") @("sh", "-c", ("set -e; $tool verify /restore; " +
+    "rm -rf /app/data/documents; find /app/images/uploads -mindepth 1 -delete; " +
+    "if [ -d /restore/data ]; then cp -r /restore/data/. /app/data/; fi; cp -r /restore/uploads/. /app/images/uploads/; " +
+    "rm -f /app/data/bazis.db /app/data/bazis.db-wal /app/data/bazis.db-shm; " +
+    "chown -R node:node /app/data /app/images/uploads; " +
+    "$tool restore-db /restore; $tool verify-restored /restore"))
 }
 
 function Invoke-Restore([string]$Source) {
@@ -278,35 +274,34 @@ function Invoke-Restore([string]$Source) {
   Assert-DockerData
 
   Write-Log "Восстановление из $Source"
-  Invoke-Checked "Остановка сайта" compose -f $ComposeFile stop | Out-Null
+  # Останавливается только сайт: база нужна для восстановления.
+  Invoke-Checked "Остановка сайта" compose -f $ComposeFile stop bazis | Out-Null
 
   $stamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
   $safe = Join-Path $Root "data-before-restore-$stamp"
-  $name = New-HelperName "restore"
+  $haveSafe = $true
   try {
-    Invoke-Checked "Подготовка восстановления" create --name $name --user root `
-      -v "${DataVolume}:/app/data" -v "${UploadsVolume}:/app/images/uploads" `
-      $Image sh -c ("set -e; node --no-warnings /tmp/backup-snapshot.js verify /restore; " +
-        "rm -rf /app/data/bazis.db /app/data/bazis.db-wal /app/data/bazis.db-shm /app/data/documents; " +
-        "find /app/images/uploads -mindepth 1 -delete; cp -r /restore/data/. /app/data/; cp -r /restore/uploads/. /app/images/uploads/; " +
-        "chown -R node:node /app/data /app/images/uploads; node --no-warnings /tmp/backup-snapshot.js verify-restored /restore") | Out-Null
-
-    New-Item -ItemType Directory -Force (Join-Path $safe "data"), (Join-Path $safe "uploads") | Out-Null
-    Invoke-Checked "Сохранение текущих данных" cp "${name}:/app/data/." (Join-Path $safe "data") | Out-Null
-    Invoke-Checked "Сохранение текущих картинок" cp "${name}:/app/images/uploads/." (Join-Path $safe "uploads") | Out-Null
+    New-Snapshot $safe
     Write-Log "Текущие данные сохранены в $safe"
-
-    Invoke-Checked "Подготовка восстановления" cp $SnapshotScript "${name}:/tmp/backup-snapshot.js" | Out-Null
-    Invoke-Checked "Подготовка восстановления" cp "$Source\." "${name}:/restore" | Out-Null
-    $run = Invoke-Docker start -a $name
-    if ($run.Code -ne 0 -or $run.Output -notmatch "(?m)^ok\r?$") {
-      Write-Log "Восстановление не удалось: $($run.Output). Возвращаю прежние данные из $safe"
-      Restore-Raw $safe
+  } catch {
+    $haveSafe = $false
+    Write-Log "Текущие данные сохранить не удалось: $($_.Exception.Message)"
+    Write-Host "Если база пустая или повреждена, это ожидаемо. Без этой копии отменить восстановление будет нельзя."
+    if ((Read-Host "Продолжить без сохранения текущих данных? Введите ДА") -ne "ДА") {
       Invoke-Docker compose -f $ComposeFile up -d | Out-Null
-      throw "Восстановление не удалось, прежние данные возвращены, сайт запущен. Причина: $($run.Output)"
+      Write-Host "Отменено, сайт запущен."
+      return
     }
-  } finally {
-    Invoke-Docker rm -f $name | Out-Null
+  }
+
+  $run = Restore-Snapshot $Source
+  if ($run.Code -ne 0 -or $run.Output -notmatch "(?m)^ok\r?$") {
+    if (-not $haveSafe) { throw "Восстановление не удалось, сайт остановлен. Причина: $($run.Output)" }
+    Write-Log "Восстановление не удалось: $($run.Output). Возвращаю прежние данные из $safe"
+    $back = Restore-Snapshot $safe
+    Invoke-Docker compose -f $ComposeFile up -d | Out-Null
+    if ($back.Code -ne 0) { throw "Восстановление не удалось, и вернуть прежние данные тоже ($($back.Output)). Копия прежних данных: $safe" }
+    throw "Восстановление не удалось, прежние данные возвращены, сайт запущен. Причина: $($run.Output)"
   }
 
   Invoke-Checked "Запуск сайта" compose -f $ComposeFile up -d | Out-Null

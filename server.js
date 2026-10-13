@@ -15,6 +15,7 @@ const { DEFAULT_PRODUCTS, CATEGORIES, CART_RULES } = require("./shared/catalog.j
 const SITES_CONFIG = require("./shared/sites.json");
 const { createAi, createAiHttpHandler, AiError } = require("./ai");
 const { createStore } = require("./db/store");
+const { parseDatabaseUrl, isConnectionError } = require("./db/connection");
 const { orderTotalText, orderTotalsSummary } = require("./documents/money");
 const { fetchRemoteImage } = require("./security/remote-image");
 const { createDocuments } = require("./documents");
@@ -77,7 +78,9 @@ const rateLimitChecks = {
 };
 /** Пояс для дат и года нумерации документов (documents/templates/common.js читает ту же переменную). */
 const documentsTzCheck = readTimeZone(process.env, "DOCUMENTS_TZ", "Asia/Almaty");
+const databaseCheck = parseDatabaseUrl(process.env.DATABASE_URL);
 const configErrors = [
+  databaseCheck.ok ? "" : databaseCheck.error,
   adminPasswordCheck.ok
     ? ""
     : `${adminPasswordCheck.error} Задайте в .env строку ADMIN_PASSWORD=ваш_пароль — не короче ${ADMIN_PASSWORD_MIN_LENGTH} символов, ` +
@@ -156,6 +159,9 @@ function productionProblems() {
   if (!TRUST_PROXY) {
     problems.push("TRUST_PROXY=0: за Caddy/nginx все посетители будут одним адресом. Уберите строку или поставьте TRUST_PROXY=1.");
   }
+  if (databaseCheck.kind === "pglite") {
+    problems.push("DATABASE_URL=pglite:… — встроенная база для тестов и разработки. Для работы сайта укажите сервер PostgreSQL (postgres://…).");
+  }
   for (const site of SITES) {
     const info = readBuildInfo(site);
     if (!info.built) problems.push(`Сайт «${site.label}» не собран: запустите update-site.bat.`);
@@ -198,6 +204,7 @@ function readSourceFile(rel) {
 
 if (process.argv.includes("--check-config")) {
   console.log("ADMIN_PASSWORD: задан.");
+  console.log(`База: ${databaseCheck.display}`);
   SITES.forEach((site) => {
     console.log(`Сайт «${site.label}»: ${site.url || "адрес не задан (только локально)"}; домены: ${[...site.hosts].join(", ")}`);
   });
@@ -332,34 +339,34 @@ function storedImageValue(value, productId) {
  * - order_totals_v1: итог с учётом скидок и доставки у заказов, сохранённых до этого исправления.
  * Если при этом запуске из старых JSON-файлов добавлены заказы, все шаги выполняются заново — для них.
  */
-function runStartupMigrations(store) {
-  const done = store.importedOrders() > 0 ? {} : store.settings.get("migrations") || {};
+async function runStartupMigrations(store) {
+  const done = store.importedOrders() > 0 ? {} : (await store.settings.get("migrations")) || {};
   const steps = {
     clients_backfill: () => store.clients.backfill(),
     orders_missing_clients_v1: () => store.clients.unlinkMissing(),
-    order_totals_v1: () => {
-      const fixed = store.orders.recomputeTotals();
+    order_totals_v1: async () => {
+      const fixed = await store.orders.recomputeTotals();
       if (fixed) console.log(`Пересчитан итог у заказов со скидками или доставкой: ${fixed}`);
     },
   };
   let changed = false;
   for (const [name, run] of Object.entries(steps)) {
     if (done[name]) continue;
-    run();
+    await run();
     done[name] = new Date().toISOString();
     changed = true;
   }
-  if (changed) store.settings.set("migrations", done);
+  if (changed) await store.settings.set("migrations", done);
 }
 
 /**
  * Старые товары хранили картинку прямо в базе (data:image/…;base64) — это раздувает GET /api/products.
  * При запуске переносим такие картинки в images/uploads; повреждённые убираем (товар остаётся без фото).
  */
-function migrateInlineImages(store) {
+async function migrateInlineImages(store) {
   let moved = 0;
   let replaced = 0;
-  for (const product of store.products.list()) {
+  for (const product of await store.products.list()) {
     if (!String(product.image || "").startsWith("data:")) continue;
     let image = "";
     try {
@@ -368,7 +375,7 @@ function migrateInlineImages(store) {
       console.warn(`Картинка товара «${product.title}» (${product.id}) повреждена (${err.code || err.message}) — фото убрано`);
     }
     try {
-      store.products.update({ ...product, image });
+      await store.products.update({ ...product, image });
     } catch (err) {
       deleteUploadIfOwned(image);
       throw err;
@@ -611,16 +618,20 @@ async function localizeProductImage(body, previous) {
 async function localizeExternalImages(store) {
   let moved = 0;
   const failed = [];
-  for (const product of store.products.list()) {
+  for (const product of await store.products.list()) {
     const image = String(product.image || "");
     if (!/^https:\/\//i.test(image)) continue;
     let saved = null;
     try {
       const { buffer, mime } = await fetchRemoteImage(image, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 15000 });
       saved = saveImageBuffer(buffer, mime);
-      const current = store.products.get(product.id);
-      // Пока качали, админ мог поменять или удалить товар — тогда файл не нужен.
-      if (!current || current.image !== image || !store.products.update({ ...current, image: saved })) {
+      // Пока качали, админ мог поменять или удалить товар — тогда файл не нужен. Проверка и запись — в одной транзакции.
+      const updated = await store.tx(async () => {
+        const current = await store.products.get(product.id);
+        if (!current || current.image !== image) return null;
+        return store.products.update({ ...current, image: saved });
+      });
+      if (!updated) {
         deleteUploadIfOwned(saved);
         continue;
       }
@@ -1009,9 +1020,9 @@ function buildCartItems(rawItems, products) {
 }
 
 /** Нехватка остатка при списании → 409 со списком позиций и доступным количеством; транзакция уже откачена. */
-function withStockErrors(fn) {
+async function withStockErrors(fn) {
   try {
-    return fn();
+    return await fn();
   } catch (err) {
     if (!err || err.code !== "out_of_stock") throw err;
     const titles = err.items.map((item) => `«${item.title}» — доступно ${item.available}`).join(", ");
@@ -1217,7 +1228,7 @@ async function handleOrdersApi(req, res, orderId, url) {
     }
 
     // Повтор после сбоя сети (тот же id) — без новой проверки: токен первой попытки уже израсходован.
-    if (store.orders.exists(newOrderId)) {
+    if (await store.orders.exists(newOrderId)) {
       sendJson(res, 200, { id: newOrderId, duplicate: true }, req);
       return;
     }
@@ -1238,13 +1249,13 @@ async function handleOrdersApi(req, res, orderId, url) {
       sendJson(res, 201, { id: newOrderId, status: "new" }, req);
       return;
     }
-    if (guard.duplicateOf && store.orders.exists(guard.duplicateOf)) {
+    if (guard.duplicateOf && (await store.orders.exists(guard.duplicateOf))) {
       sendJson(res, 200, { id: guard.duplicateOf, duplicate: true }, req);
       return;
     }
 
-    const result = withStockErrors(() => store.tx(() => {
-      if (store.orders.exists(newOrderId)) return { status: 200, body: { id: newOrderId, duplicate: true } };
+    const result = await withStockErrors(() => store.tx(async () => {
+      if (await store.orders.exists(newOrderId)) return { status: 200, body: { id: newOrderId, duplicate: true } };
 
       let items;
       if (fromChat) {
@@ -1252,7 +1263,7 @@ async function handleOrdersApi(req, res, orderId, url) {
       } else if (channel === "site") {
         items = [buildLeadItem(leadCategory)];
       } else {
-        const built = buildCartItems(body.items, store.products.list());
+        const built = buildCartItems(body.items, await store.products.list());
         if (built.error) {
           const status = built.error === "catalog_changed" ? 409 : 400;
           const body = { error: built.error };
@@ -1290,14 +1301,15 @@ async function handleOrdersApi(req, res, orderId, url) {
       }
 
       // Карточку клиента создаёт переход заказа в работу (PATCH) — спам-заказы не плодят карточки.
-      const client = store.clients.findByContact(customerName, customerPhone);
+      const client = await store.clients.findByContact(customerName, customerPhone);
       if (client) created.clientId = client.id;
 
-      return { status: 201, body: store.orders.insert(created) };
+      return { status: 201, body: await store.orders.insert(created) };
     }));
     if (result.status === 201) {
       orderGuard.accepted({ phone: limitKey, fingerprint, orderId: newOrderId });
       notifier.order(result.body);
+      refreshAiCatalog();
     }
     sendJson(res, result.status, result.body, req);
     return;
@@ -1316,7 +1328,7 @@ async function handleOrdersApi(req, res, orderId, url) {
         return;
       }
       try {
-        const page = store.orders.page({
+        const page = await store.orders.page({
           kind: query.get("kind"),
           status: ORDER_STATUSES.includes(status) ? status : null,
           cursor: query.get("cursor"),
@@ -1333,13 +1345,13 @@ async function handleOrdersApi(req, res, orderId, url) {
       return;
     }
     // Только чтение: карточки клиентов заводятся при смене статуса заказа, а не при просмотре списка.
-    sendJson(res, 200, store.orders.list().map(orderSummary), req, { etag: true });
+    sendJson(res, 200, (await store.orders.list()).map(orderSummary), req, { etag: true });
     return;
   }
 
   if (req.method === "GET" && orderId) {
     if (!requireAdmin(req, res)) return;
-    const order = store.orders.get(orderId);
+    const order = await store.orders.get(orderId);
     if (!order) {
       sendJson(res, 404, { error: "not_found" }, req);
       return;
@@ -1370,32 +1382,34 @@ async function handleOrdersApi(req, res, orderId, url) {
     if (typeof body.note === "string") fields.note = body.note.trim().slice(0, 500);
     if (body.clientId !== undefined) {
       const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
-      if (!clientId || clientId.length > 80 || !store.clients.exists(clientId)) {
+      if (!clientId || clientId.length > 80 || !(await store.clients.exists(clientId))) {
         sendJson(res, 400, { error: "client_not_found", message: "Такого клиента нет — обновите список клиентов" }, req);
         return;
       }
       fields.clientId = clientId;
     }
-    const result = withStockErrors(() => store.tx(() => {
-      let updated = store.orders.patch(orderId, fields);
+    const result = await withStockErrors(() => store.tx(async () => {
+      let updated = await store.orders.patch(orderId, fields);
       if (!updated) return { status: 404, body: { error: "not_found" } };
       // Заказ взят в работу — теперь это настоящий клиент: заводим карточку (с формы она не создаётся).
       if (!updated.clientId && (updated.status === "in_progress" || updated.status === "done")) {
-        const client = store.clients.upsert({ name: updated.customerName, phone: updated.customerPhone, source: "order" });
-        if (client) updated = store.orders.patch(orderId, { clientId: client.id }) || updated;
+        const client = await store.clients.upsert({ name: updated.customerName, phone: updated.customerPhone, source: "order" });
+        if (client) updated = (await store.orders.patch(orderId, { clientId: client.id })) || updated;
       }
       return { status: 200, body: withTotals(updated) };
     }));
+    if (result.status === 200) refreshAiCatalog();
     sendJson(res, result.status, result.body, req);
     return;
   }
 
   if (req.method === "DELETE" && orderId) {
     if (!requireAdmin(req, res)) return;
-    if (!store.orders.remove(orderId)) {
+    if (!(await store.orders.remove(orderId))) {
       sendJson(res, 404, { error: "not_found" }, req);
       return;
     }
+    refreshAiCatalog();
     sendJson(res, 200, { ok: true }, req);
     return;
   }
@@ -1424,7 +1438,7 @@ async function handleClientsApi(req, res, clientId) {
   if (!requireAdmin(req, res)) return;
 
   if (req.method === "GET" && !clientId) {
-    sendJson(res, 200, store.clients.list(), req);
+    sendJson(res, 200, await store.clients.list(), req);
     return;
   }
 
@@ -1432,8 +1446,8 @@ async function handleClientsApi(req, res, clientId) {
     const body = await readJsonObject(req);
     const requisites = clientRequisites(body, res, req);
     if (requisites === false) return;
-    const client = store.tx(() => {
-      const created = store.clients.upsert({
+    const client = await store.tx(async () => {
+      const created = await store.clients.upsert({
         id: body.id != null ? String(body.id).trim().slice(0, 80) : "",
         name: body.name != null ? String(body.name).slice(0, 120) : "",
         phone: body.phone != null ? String(body.phone).slice(0, 32) : "",
@@ -1441,7 +1455,7 @@ async function handleClientsApi(req, res, clientId) {
         source: body.source,
         requisites,
       });
-      if (created) store.clients.syncOrders(created, null);
+      if (created) await store.clients.syncOrders(created, null);
       return created;
     });
     if (!client) {
@@ -1461,7 +1475,7 @@ async function handleClientsApi(req, res, clientId) {
     const requisites = clientRequisites(body, res, req);
     if (requisites === false) return;
     if (requisites !== undefined) fields.requisites = requisites;
-    const client = store.clients.patch(clientId, fields);
+    const client = await store.clients.patch(clientId, fields);
     if (!client) {
       sendJson(res, 404, { error: "not_found" }, req);
       return;
@@ -1471,7 +1485,7 @@ async function handleClientsApi(req, res, clientId) {
   }
 
   if (req.method === "DELETE" && clientId) {
-    if (!store.clients.remove(clientId)) {
+    if (!(await store.clients.remove(clientId))) {
       sendJson(res, 404, { error: "not_found" }, req);
       return;
     }
@@ -1484,12 +1498,12 @@ async function handleClientsApi(req, res, clientId) {
 
 async function handleProductsApi(req, res, productId) {
   if (req.method === "GET" && !productId) {
-    sendJson(res, 200, store.products.list(), req);
+    sendJson(res, 200, await store.products.list(), req);
     return;
   }
 
   if (req.method === "GET" && productId) {
-    const product = store.products.get(productId);
+    const product = await store.products.get(productId);
     if (!product) {
       sendJson(res, 404, { error: "not_found" }, req);
       return;
@@ -1525,11 +1539,12 @@ async function handleProductsApi(req, res, productId) {
     }
     let created;
     try {
-      created = store.products.insert(product);
+      created = await store.products.insert(product);
     } catch (err) {
       deleteUploadIfOwned(product.image);
       throw err;
     }
+    refreshAiCatalog();
     sendJson(res, 201, created, req);
     return;
   }
@@ -1550,13 +1565,13 @@ async function handleProductsApi(req, res, productId) {
     // Картинку по ссылке качаем до чтения товара: за время загрузки могли пройти продажи (остаток).
     let fetched = null;
     try {
-      const current = store.products.get(productId);
+      const current = await store.products.get(productId);
       if (current) fetched = await localizeProductImage(body, current);
     } catch (err) {
       sendProductError(res, err, req);
       return;
     }
-    const previous = store.products.get(productId);
+    const previous = await store.products.get(productId);
     if (!previous) {
       deleteUploadIfOwned(fetched);
       sendJson(res, 404, { error: "not_found" }, req);
@@ -1584,7 +1599,7 @@ async function handleProductsApi(req, res, productId) {
     const imageChanged = previous.image !== next.image;
     let updated;
     try {
-      updated = store.products.update(next);
+      updated = await store.products.update(next);
     } catch (err) {
       if (imageChanged) deleteUploadIfOwned(next.image);
       if (err && err.code === "stock_held") {
@@ -1599,6 +1614,7 @@ async function handleProductsApi(req, res, productId) {
       return;
     }
     if (imageChanged) deleteUploadIfOwned(previous.image);
+    refreshAiCatalog();
     sendJson(res, 200, updated, req);
     return;
   }
@@ -1606,7 +1622,7 @@ async function handleProductsApi(req, res, productId) {
   if (req.method === "DELETE" && productId) {
     let removed;
     try {
-      removed = store.products.remove(productId);
+      removed = await store.products.remove(productId);
     } catch (err) {
       if (err && err.code === "product_reserved") {
         sendProductError(res, err, req);
@@ -1619,6 +1635,7 @@ async function handleProductsApi(req, res, productId) {
       return;
     }
     deleteUploadIfOwned(removed.image);
+    refreshAiCatalog();
     sendJson(res, 200, { ok: true }, req);
     return;
   }
@@ -1855,24 +1872,71 @@ const documentsHttp = createDocumentsHttpHandler(() => documents, sender, {
 
 const AI_BUDGET_KEY = "ai_budget";
 const AI_HISTORY_SECRET_KEY = "ai_history_secret";
+/** Каталог для ИИ перечитывается после каждой правки товаров и заказов; это — страховка на случай пропуска. */
+const AI_CATALOG_MAX_AGE_MS = 60 * 1000;
 
-/** Ключ подписи реплик ИИ-консультанта: из .env (AI_HISTORY_SECRET) или созданный один раз и сохранённый в базе. */
-function aiHistorySecret() {
+/**
+ * ИИ-ядро читает каталог, расход бюджета и ключ подписи синхронно, а база отвечает асинхронно.
+ * Поэтому здесь их копии в памяти: загружаются при запуске (loadAiState) до приёма запросов к API.
+ */
+const aiState = {
+  catalog: null,
+  catalogVersion: 0,
+  catalogCheckedAt: 0,
+  budget: null,
+  budgetWrites: Promise.resolve(),
+  historySecret: null,
+};
+
+function refreshAiCatalog(target = store) {
+  if (!target) return Promise.resolve();
+  const version = ++aiState.catalogVersion;
+  aiState.catalogCheckedAt = Date.now();
+  return target.products.list().then(
+    (list) => {
+      if (version === aiState.catalogVersion) aiState.catalog = list;
+    },
+    (err) => console.warn("Каталог для ИИ-консультанта не обновлён:", err.message)
+  );
+}
+
+/**
+ * Каталог, расход бюджета за сутки и ключ подписи реплик консультанта.
+ * Ключ — из .env (AI_HISTORY_SECRET) или созданный один раз и сохранённый в базе.
+ */
+async function loadAiState(target) {
+  await refreshAiCatalog(target);
+  aiState.budget = await target.settings.get(AI_BUDGET_KEY);
   const fromEnv = String(process.env.AI_HISTORY_SECRET || "").trim();
-  if (fromEnv.length >= 16) return fromEnv;
-  if (!store) return null;
-  const saved = store.settings.get(AI_HISTORY_SECRET_KEY);
-  if (typeof saved === "string" && saved.length >= 32) return saved;
-  return store.settings.set(AI_HISTORY_SECRET_KEY, crypto.randomBytes(32).toString("base64url"));
+  if (fromEnv.length >= 16) {
+    aiState.historySecret = fromEnv;
+    return;
+  }
+  const saved = await target.settings.get(AI_HISTORY_SECRET_KEY);
+  aiState.historySecret =
+    typeof saved === "string" && saved.length >= 32
+      ? saved
+      : await target.settings.set(AI_HISTORY_SECRET_KEY, crypto.randomBytes(32).toString("base64url"));
 }
 
 const ai = createAi(process.env, {
   budgetStorage: {
-    load: () => (store ? store.settings.get(AI_BUDGET_KEY) : null),
-    save: (state) => store && store.settings.set(AI_BUDGET_KEY, state),
+    load: () => aiState.budget,
+    // Записи по очереди: более старое состояние не перезапишет новое, даже если запрос к базе ответит позже.
+    save: (state) => {
+      aiState.budget = state;
+      if (!store) return;
+      const target = store;
+      aiState.budgetWrites = aiState.budgetWrites
+        .then(() => target.settings.set(AI_BUDGET_KEY, state))
+        .catch((err) => console.error("AI-бюджет: не удалось сохранить расход:", err.message));
+    },
   },
-  getProducts: () => (store ? store.products.list() : null),
-  historySecret: aiHistorySecret,
+  getProducts: () => {
+    if (store && Date.now() - aiState.catalogCheckedAt > AI_CATALOG_MAX_AGE_MS) refreshAiCatalog();
+    return aiState.catalog;
+  },
+  historySecret: () => aiState.historySecret,
   notifier,
 });
 const handleAiApi = createAiHttpHandler(ai, {
@@ -1910,7 +1974,7 @@ function notifyAiError(err, req) {
 }
 
 const handleHealth = createHealthHandler({
-  ping: () => {
+  ping: async () => {
     if (!store) throw new Error("база ещё не открыта (сервер запускается)");
     return store.ping();
   },
@@ -1933,7 +1997,7 @@ async function handleRequest(req, res) {
       return;
     }
     if (url.pathname === "/api/health") {
-      handleHealth(req, res);
+      await handleHealth(req, res);
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -1955,12 +2019,14 @@ async function handleRequest(req, res) {
       sendJson(res, 400, { error: "invalid_json" }, req);
       return;
     }
-    // SQLITE_CORRUPT / SQLITE_NOTADB (младший байт — основной код, старшие — уточнение): файл базы повреждён.
-    const sqliteCode = err && Number.isInteger(err.errcode) ? err.errcode & 0xff : null;
-    if (sqliteCode === 11 || sqliteCode === 26) {
-      console.error(`[${req.id}] База ${store.path} повреждена: ${err.message}. Восстановите её из ${store.backupDir}`);
-      notifier.alert("db_corrupt", "База данных повреждена — сайт не может работать с заказами. Восстановите её из резервной копии.");
-      sendJson(res, 503, { error: "db_corrupt", message: "Файл данных на сервере повреждён. Сообщите администратору." }, req);
+    // PostgreSQL не отвечает (остановлен, перезапускается, оборвалась связь): запрос можно повторить позже.
+    if (isConnectionError(err)) {
+      console.error(`[${req.id}] ${req.method} ${requestPath(req)}: база ${store ? store.location : ""} недоступна — ${err.message}`);
+      notifier.alert(
+        "db_unavailable",
+        "База данных PostgreSQL не отвечает — сайт не может работать с заказами. Проверьте, что PostgreSQL запущен."
+      );
+      sendJson(res, 503, { error: "db_unavailable", message: "База данных временно недоступна. Повторите через минуту." }, req);
       return;
     }
     console.error(`[${req.id}] ${req.method} ${requestPath(req)}:`, err);
@@ -1989,19 +2055,32 @@ server.once("error", (err) => {
   process.exit(1);
 });
 
-server.listen(PORT, HOST, () => {
+/** База открыта, данные перенесены, копии в памяти загружены — только после этого API принимает запросы. */
+async function openStore() {
+  const opened = await createStore({
+    dataDir: DATA_DIR,
+    databaseUrl: process.env.DATABASE_URL,
+    normalizePhone,
+    normalizeProduct: normalizeStoredProduct,
+    defaultProducts: DEFAULT_PRODUCTS,
+    orderTotalText,
+    onBackupError: (err) => notifier.alert("backup", "Не удалось сделать резервную копию базы: " + scrub(err.message, sender.hideSecrets)),
+  });
   try {
-    store = createStore({
-      dataDir: DATA_DIR,
-      normalizePhone,
-      normalizeProduct: normalizeStoredProduct,
-      defaultProducts: DEFAULT_PRODUCTS,
-      orderTotalText,
-      onBackupError: (err) => notifier.alert("backup", "Не удалось сделать резервную копию базы: " + scrub(err.message, sender.hideSecrets)),
-    });
-    runStartupMigrations(store);
-    migrateInlineImages(store);
-    documents = createDocuments({ store, rootDir: ROOT, dataDir: DATA_DIR, notifier });
+    await runStartupMigrations(opened);
+    await migrateInlineImages(opened);
+    await loadAiState(opened);
+    documents = createDocuments({ store: opened, rootDir: ROOT, dataDir: DATA_DIR, notifier });
+  } catch (err) {
+    await opened.close().catch(() => {});
+    throw err;
+  }
+  return opened;
+}
+
+server.listen(PORT, HOST, async () => {
+  try {
+    store = await openStore();
   } catch (err) {
     // Стек обязателен: по одному тексту не найти, в какой миграции или проверке упал запуск.
     console.error("Сервер не запустился:", (err && err.stack) || err);
@@ -2018,7 +2097,7 @@ server.listen(PORT, HOST, () => {
     console.log(`Сайт «${site.label}»: ${local}` + (site.url ? `, в интернете — ${site.url}` : ""));
   });
   console.log(MEDIA_STATUS_LINE);
-  console.log(`База данных (SQLite): ${store.path}`);
+  console.log(`База данных: ${store.location}`);
   console.log(`Резервные копии: ${store.backupDir}`);
   console.log(fileLog && fileLog.file() ? `Журнал: ${path.dirname(fileLog.file())} (по дням, хранится ${Number(process.env.LOG_KEEP_DAYS) || 14} дн.)` : "Журнал: только консоль");
   console.log(
@@ -2068,13 +2147,22 @@ const STOP_FILE = path.join(ROOT, "server.stop");
 const shutdown = createShutdown({
   server,
   closeDocuments: () => documents && documents.close(),
-  closeStore: () => store && store.close(),
+  closeStore: async () => {
+    if (!store) return;
+    await aiState.budgetWrites;
+    await store.close();
+  },
   closeLog: () => fileLog && fileLog.close(),
 });
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
 
-const crash = createCrashHandler({ notifier, closeStore: () => store && store.close() });
+const crash = createCrashHandler({
+  notifier,
+  closeStore: () => {
+    if (store) store.close().catch(() => {});
+  },
+});
 // Отказ промиса без обработчика — такая же ошибка в коде, как исключение: состояние процесса не гарантировано.
 process.on("unhandledRejection", (err) => crash("необработанный отказ промиса", err));
 process.on("uncaughtException", (err) => crash("сбой процесса", err));

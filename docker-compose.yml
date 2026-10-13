@@ -1,15 +1,45 @@
 # Запуск:      docker compose up -d --build
 # Остановка:   docker compose down        (данные остаются в томах)
 # Журнал:      docker compose logs -f
-# Настройки (ADMIN_PASSWORD, OPENAI_API_KEY, SITE_DOMAIN…) — в .env рядом с этим файлом.
+# Настройки (ADMIN_PASSWORD, POSTGRES_PASSWORD, OPENAI_API_KEY, SITE_DOMAIN…) — в .env рядом с этим файлом.
 # После изменения SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL / MEDIA_SITE_ENABLED нужна пересборка: docker compose up -d --build.
 # Автозапуск после входа в Windows: install-docker-autostart.bat.
 
-# Имя закреплено: по нему называются тома с данными (project_bazis-data…). Без него имя берётся из папки,
+# Имя закреплено: по нему называются тома с данными (project_bazis-data, project_bazis-pg…). Без него имя берётся из папки,
 # и после переименования или переноса папки сайт запустился бы с новой пустой базой.
 name: project
 
 services:
+  # База данных сайта: заказы, клиенты, каталог, документы. Данные — в томе bazis-pg.
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bazis
+      POSTGRES_USER: bazis
+      # Только латинские буквы и цифры: пароль входит в адрес подключения (DATABASE_URL) без экранирования.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env (латинские буквы и цифры, от 16 символов)}
+      TZ: Asia/Almaty
+    # Только 127.0.0.1: база доступна сайту, запущенному без Docker (start-site.bat), и scripts/db.js на этом компьютере,
+    # но не из сети. Порт меняется в .env: POSTGRES_HOST_PORT.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - bazis-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bazis -d bazis"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # PostgreSQL успевает завершить запись на диск: при принудительной остановке он восстанавливается по журналу, но дольше.
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   bazis:
     build:
       context: .
@@ -23,16 +53,23 @@ services:
     restart: unless-stopped
     env_file: .env
     # Важнее значений из .env: внутри контейнера сервер слушает все адреса на порту 8787,
-    # а адрес посетителя берёт от прокси из сети Docker.
+    # адрес посетителя берёт от прокси из сети Docker, а база — сервис postgres этого файла.
     environment:
       HOST: 0.0.0.0
       PORT: "8787"
       TRUST_PROXY: private
+      DATABASE_URL: postgres://bazis:${POSTGRES_PASSWORD}@postgres:5432/bazis
+    depends_on:
+      postgres:
+        condition: service_healthy
+        # Перезапуск postgres (обновление образа) перезапускает и сайт — соединения с базой открываются заново.
+        restart: true
     # Только 127.0.0.1: из интернета сайт открывается через Caddy/nginx на этом компьютере (deploy/*.template).
     # Не публикуйте порт на 0.0.0.0 — тогда посетитель сможет подделать свой адрес в X-Forwarded-For.
     ports:
       - "127.0.0.1:${PORT:-8787}:8787"
     volumes:
+      # Файлы рядом с базой: PDF выпущенных документов, печать и подпись, ежедневные копии базы (backups).
       - bazis-data:/app/data
       - bazis-uploads:/app/images/uploads
       - bazis-logs:/app/logs
@@ -46,6 +83,7 @@ services:
         max-file: "3"
 
 volumes:
+  bazis-pg:
   bazis-data:
   bazis-uploads:
   bazis-logs:

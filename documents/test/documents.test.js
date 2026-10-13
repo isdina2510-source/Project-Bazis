@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createStore } = require("../../db/store");
+const { sharedDatabase } = require("../../test/pg");
 const { createDocuments } = require("..");
 const { createRenderer } = require("../render");
 const { createSender } = require("../send");
@@ -43,12 +44,22 @@ const COMPANY = {
 };
 
 const renderer = createRenderer();
-test.after(() => renderer.close());
+let shared;
+test.before(async () => {
+  shared = await sharedDatabase();
+});
+test.after(async () => {
+  await renderer.close();
+  await shared.db.close();
+});
 
 /** @param {{ rootDir?: string, log?: object, notifier?: object }} [opts] */
-function setup(t, opts = {}) {
+async function setup(t, opts = {}) {
+  await shared.reset();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "bazis-docs-"));
-  const store = createStore({ dataDir, normalizePhone, normalizeProduct, defaultProducts: PRODUCTS, log: silent });
+  const store = await createStore({
+    dataDir, normalizePhone, normalizeProduct, defaultProducts: PRODUCTS, log: silent, db: shared.db, backups: false,
+  });
   const documents = createDocuments({
     store,
     rootDir: opts.rootDir || ROOT,
@@ -57,8 +68,8 @@ function setup(t, opts = {}) {
     notifier: opts.notifier,
     renderer,
   });
-  t.after(() => {
-    store.close();
+  t.after(async () => {
+    await store.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
   return { store, documents, dataDir };
@@ -85,17 +96,17 @@ function order(store, overrides = {}) {
 const year = () => Number(new Intl.DateTimeFormat("en", { timeZone: "Asia/Almaty", year: "numeric" }).format(new Date()));
 
 test("счёт: номер по году с 1, повторный запрос не тратит номер, PDF кэшируется", async (t) => {
-  const { store, documents, dataDir } = setup(t);
-  documents.saveCompany({ ...COMPANY, invoicePrefix: "СЧ-" });
-  const o = order(store);
-  const [doc] = documents.issueForOrder(o.id, "invoice");
+  const { store, documents, dataDir } = await setup(t);
+  await documents.saveCompany({ ...COMPANY, invoicePrefix: "СЧ-" });
+  const o = await order(store);
+  const [doc] = await documents.issueForOrder(o.id, "invoice");
   assert.equal(doc.number, "СЧ-" + year() + "-0001");
   assert.equal(doc.title, "Счёт № " + doc.number);
   assert.equal(doc.outdated, false);
   assert.equal(doc.snapshot, undefined);
-  assert.equal(documents.issueForOrder(o.id, "invoice")[0].id, doc.id);
+  assert.equal((await documents.issueForOrder(o.id, "invoice"))[0].id, doc.id);
 
-  const [act] = documents.issueForOrder(o.id, "act");
+  const [act] = await documents.issueForOrder(o.id, "act");
   assert.equal(act.number, year() + "-0001");
 
   const pdf = await documents.documentPdf(doc.id);
@@ -106,64 +117,73 @@ test("счёт: номер по году с 1, повторный запрос �
   assert.ok((await documents.documentPdf(act.id)).buffer.length > 1000);
 });
 
-test("снимок не меняется вслед за заказом; перевыпуск аннулирует старый номер", async (t) => {
-  const { store, documents } = setup(t);
-  documents.saveCompany(COMPANY);
-  const o = order(store);
-  const [first] = documents.issueForOrder(o.id, "invoice");
-  store.orders.patch(o.id, { discount: 10000, delivery: 2000 });
-  const [listed] = documents.listForOrder(o.id);
-  assert.equal(listed.outdated, true);
-  assert.equal(store.documents.get(first.id).snapshot.totals.total, 15000000);
+test("двойное нажатие «Выпустить»: одновременные запросы получают один и тот же счёт", async (t) => {
+  const { store, documents } = await setup(t);
+  await documents.saveCompany(COMPANY);
+  const o = await order(store);
+  const results = await Promise.all([1, 2, 3].map(() => documents.issueForOrder(o.id, "invoice")));
+  assert.equal(new Set(results.map(([doc]) => doc.id)).size, 1);
+  assert.equal((await store.documents.listByOrder(o.id)).length, 1, "номер израсходован один раз");
+});
 
-  const second = documents.reissue(first.id);
+test("снимок не меняется вслед за заказом; перевыпуск аннулирует старый номер", async (t) => {
+  const { store, documents } = await setup(t);
+  await documents.saveCompany(COMPANY);
+  const o = await order(store);
+  const [first] = await documents.issueForOrder(o.id, "invoice");
+  await store.orders.patch(o.id, { discount: 10000, delivery: 2000 });
+  const [listed] = await documents.listForOrder(o.id);
+  assert.equal(listed.outdated, true);
+  assert.equal((await store.documents.get(first.id)).snapshot.totals.total, 15000000);
+
+  const second = await documents.reissue(first.id);
   assert.equal(second.seq, 2);
   assert.equal(second.outdated, false);
-  assert.equal(store.documents.get(second.id).snapshot.totals.total, 14200000);
-  const old = documents.listForOrder(o.id).find((doc) => doc.id === first.id);
+  assert.equal((await store.documents.get(second.id)).snapshot.totals.total, 14200000);
+  const old = (await documents.listForOrder(o.id)).find((doc) => doc.id === first.id);
   assert.equal(old.status, "annulled");
   assert.equal(old.replacedBy, second.id);
-  assert.throws(() => documents.reissue(first.id), { code: "document_annulled" });
+  await assert.rejects(documents.reissue(first.id), { code: "document_annulled" });
   const annulledPdf = await documents.documentPdf(first.id);
   assert.match(annulledPdf.fileName, /аннулирован/);
 });
 
-test("заказ в двух валютах — отдельный счёт на каждую", (t) => {
-  const { store, documents } = setup(t);
-  documents.saveCompany(COMPANY);
-  const o = order(store, {
+test("заказ в двух валютах — отдельный счёт на каждую", async (t) => {
+  const { store, documents } = await setup(t);
+  await documents.saveCompany(COMPANY);
+  const o = await order(store, {
     items: [
       { id: "p1", title: "Аудит", qty: 1, price: 150000, currency: "KZT", kind: "service" },
       { id: "x", title: "Лицензия", qty: 1, price: 100, currency: "USD", kind: "product" },
     ],
   });
-  const docs = documents.issueForOrder(o.id, "invoice");
+  const docs = await documents.issueForOrder(o.id, "invoice");
   assert.deepEqual(docs.map((doc) => doc.currency).sort(), ["KZT", "USD"]);
   assert.deepEqual(docs.map((doc) => doc.seq).sort(), [1, 2]);
 });
 
-test("заявки, отменённые и пустые заказы документов не получают", (t) => {
-  const { store, documents } = setup(t);
-  const lead = order(store, { channel: "site", items: [] });
-  assert.throws(() => documents.issueForOrder(lead.id, "invoice"), { code: "lead_has_no_documents" });
-  const cancelled = order(store);
-  store.orders.patch(cancelled.id, { status: "cancelled" });
-  assert.throws(() => documents.issueForOrder(cancelled.id, "act"), { code: "order_cancelled" });
-  assert.throws(() => documents.issueForOrder("ord_none", "invoice"), { code: "not_found", status: 404 });
-  assert.throws(() => documents.issueForOrder(cancelled.id, "waybill"), { code: "invalid_kind" });
+test("заявки, отменённые и пустые заказы документов не получают", async (t) => {
+  const { store, documents } = await setup(t);
+  const lead = await order(store, { channel: "site", items: [] });
+  await assert.rejects(documents.issueForOrder(lead.id, "invoice"), { code: "lead_has_no_documents" });
+  const cancelled = await order(store);
+  await store.orders.patch(cancelled.id, { status: "cancelled" });
+  await assert.rejects(documents.issueForOrder(cancelled.id, "act"), { code: "order_cancelled" });
+  await assert.rejects(documents.issueForOrder("ord_none", "invoice"), { code: "not_found", status: 404 });
+  await assert.rejects(documents.issueForOrder(cancelled.id, "waybill"), { code: "invalid_kind" });
 });
 
-test("покупатель берётся из реквизитов клиента", (t) => {
-  const { store, documents } = setup(t);
-  documents.saveCompany(COMPANY);
-  const client = store.clients.upsert({
+test("покупатель берётся из реквизитов клиента", async (t) => {
+  const { store, documents } = await setup(t);
+  await documents.saveCompany(COMPANY);
+  const client = await store.clients.upsert({
     name: "Айгерим",
     phone: "+7 701 000 00 01",
     requisites: { type: "company", legalName: "ТОО «Ромашка»", bin: "123456789012", contract: "№ 5" },
   });
-  const o = order(store, { clientId: client.id });
-  const [doc] = documents.issueForOrder(o.id, "invoice");
-  const buyer = store.documents.get(doc.id).snapshot.buyer;
+  const o = await order(store, { clientId: client.id });
+  const [doc] = await documents.issueForOrder(o.id, "invoice");
+  const buyer = (await store.documents.get(doc.id)).snapshot.buyer;
   assert.equal(buyer.name, "ТОО «Ромашка»");
   assert.equal(buyer.bin, "123456789012");
   assert.equal(buyer.type, "company");
@@ -171,9 +191,9 @@ test("покупатель берётся из реквизитов клиент
 });
 
 test("реквизиты компании: проверка, печать и подпись по хешу содержимого", async (t) => {
-  const { documents, dataDir } = setup(t);
-  assert.throws(() => documents.saveCompany({ bin: "12" }), { code: "invalid_requisites" });
-  const saved = documents.saveCompany({ name: "ИП «Базис»", bin: "880101300123" });
+  const { documents, dataDir } = await setup(t);
+  await assert.rejects(documents.saveCompany({ bin: "12" }), { code: "invalid_requisites" });
+  const saved = await documents.saveCompany({ name: "ИП «Базис»", bin: "880101300123" });
   assert.equal(saved.fields.bin, "880101300123");
   assert.equal(saved.stamp, null);
 
@@ -183,14 +203,22 @@ test("реквизиты компании: проверка, печать и п�
   const files = fs.readdirSync(path.join(dataDir, "company"));
   assert.equal(files.length, 1);
   assert.match(files[0], /^stamp-[0-9a-f]{20}\.png$/);
-  assert.equal(documents.companyImage("stamp").mime, "image/png");
+  assert.equal((await documents.companyImage("stamp")).mime, "image/png");
   await assert.rejects(() => documents.setCompanyImage("stamp", "data:image/gif;base64,R0lGODlh"), { code: "invalid_image" });
   assert.equal((await documents.setCompanyImage("stamp", null)).stamp, null);
   assert.equal(fs.readdirSync(path.join(dataDir, "company")).length, 1, "файл остаётся для выпущенных документов");
 });
 
+test("одновременное сохранение реквизитов и загрузка подписи не затирают друг друга", async (t) => {
+  const { documents } = await setup(t);
+  await Promise.all([documents.saveCompany(COMPANY), documents.setCompanyImage("signature", PNG)]);
+  const company = await documents.getCompany();
+  assert.equal(company.fields.bin, COMPANY.bin);
+  assert.match(company.signature, /^signature-/);
+});
+
 test("каталог по выбранным товарам, карточка товара и заявки", async (t) => {
-  const { store, documents } = setup(t);
+  const { store, documents } = await setup(t);
   const all = await documents.catalogPdf({});
   assert.equal(all.buffer.subarray(0, 5).toString("latin1"), "%PDF-");
   assert.match(all.fileName, /^Каталог \d{4}-\d{2}-\d{2}\.pdf$/);
@@ -198,9 +226,10 @@ test("каталог по выбранным товарам, карточка т
   assert.ok(one.buffer.length > 1000);
   await assert.rejects(() => documents.catalogPdf({ ids: ["nope"] }), { code: "empty_catalog" });
   assert.equal((await documents.productPdf("p1")).fileName, "Аудит.pdf");
-  const lead = order(store, { channel: "site", items: [], lead: { direction: "management", comment: "Позвоните" } });
+  const lead = await order(store, { channel: "site", items: [], lead: { direction: "management", comment: "Позвоните" } });
   assert.ok((await documents.leadPdf(lead.id)).buffer.length > 1000);
-  await assert.rejects(() => documents.leadPdf(order(store).id), { code: "not_a_lead" });
+  const notLead = await order(store);
+  await assert.rejects(() => documents.leadPdf(notLead.id), { code: "not_a_lead" });
 });
 
 test("отправка: e-mail через SMTP-транспорт и Telegram без утечки токена", async () => {
@@ -239,32 +268,32 @@ function recorder() {
 
 test("HIGH-05: печать задана, но файл пропал — счёт не выпускается, номер не тратится, есть ошибка в журнале и оповещение", async (t) => {
   const rec = recorder();
-  const { store, documents, dataDir } = setup(t, { log: rec.log, notifier: rec.notifier });
-  documents.saveCompany(COMPANY);
+  const { store, documents, dataDir } = await setup(t, { log: rec.log, notifier: rec.notifier });
+  await documents.saveCompany(COMPANY);
   const { stamp } = await documents.setCompanyImage("stamp", PNG);
   fs.rmSync(path.join(dataDir, "company", stamp));
-  const o = order(store);
+  const o = await order(store);
 
-  assert.throws(
-    () => documents.issueForOrder(o.id, "invoice"),
+  await assert.rejects(
+    documents.issueForOrder(o.id, "invoice"),
     (err) => err.code === "company_asset_unreadable" && err.status === 409 && /Файл печати не найден/.test(err.message)
   );
-  assert.equal(store.documents.listByOrder(o.id).length, 0, "номер не израсходован");
+  assert.equal((await store.documents.listByOrder(o.id)).length, 0, "номер не израсходован");
   assert.match(rec.errors.join("\n"), new RegExp(stamp), "в журнале путь к файлу");
   assert.equal(rec.alerts.length, 1);
   assert.match(rec.alerts[0].text, /печати/);
 
   await documents.setCompanyImage("stamp", PNG);
-  const [doc] = documents.issueForOrder(o.id, "invoice");
+  const [doc] = await documents.issueForOrder(o.id, "invoice");
   assert.equal(doc.seq, 1);
 });
 
 test("HIGH-05: PDF с заданной, но нечитаемой подписью не собирается и не попадает в кэш", async (t) => {
   const rec = recorder();
-  const { store, documents, dataDir } = setup(t, { log: rec.log, notifier: rec.notifier });
-  documents.saveCompany(COMPANY);
+  const { store, documents, dataDir } = await setup(t, { log: rec.log, notifier: rec.notifier });
+  await documents.saveCompany(COMPANY);
   const { signature } = await documents.setCompanyImage("signature", PNG);
-  const [doc] = documents.issueForOrder(order(store).id, "act");
+  const [doc] = await documents.issueForOrder((await order(store)).id, "act");
   const signatureFile = path.join(dataDir, "company", signature);
   const cached = path.join(dataDir, "documents", String(doc.year), doc.id + ".pdf");
   fs.rmSync(signatureFile);
@@ -278,28 +307,28 @@ test("HIGH-05: PDF с заданной, но нечитаемой подпись
   assert.ok(fs.existsSync(cached));
 });
 
-test("MED-10: без обязательных реквизитов счёт и акт не выпускаются, номер не тратится", (t) => {
-  const { store, documents } = setup(t);
-  const o = order(store);
-  documents.saveCompany({ name: "ИП «Базис»" });
-  assert.throws(
-    () => documents.issueForOrder(o.id, "invoice"),
-    (err) => {
-      assert.equal(err.code, "company_requisites_missing");
-      assert.equal(err.status, 400);
-      assert.deepEqual(err.fields, ["bin", "bank", "iik", "bik", "kbe"]);
-      assert.match(err.message, /ИИК \(IBAN\)/);
-      return true;
-    }
+test("MED-10: без обязательных реквизитов счёт и акт не выпускаются, номер не тратится", async (t) => {
+  const { store, documents } = await setup(t);
+  const o = await order(store);
+  await documents.saveCompany({ name: "ИП «Базис»" });
+  await assert.rejects(documents.issueForOrder(o.id, "invoice"), (err) => {
+    assert.equal(err.code, "company_requisites_missing");
+    assert.equal(err.status, 400);
+    assert.deepEqual(err.fields, ["bin", "bank", "iik", "bik", "kbe"]);
+    assert.match(err.message, /ИИК \(IBAN\)/);
+    return true;
+  });
+  await assert.rejects(
+    documents.issueForOrder(o.id, "act"),
+    (err) => err.code === "company_requisites_missing" && err.fields.join() === "bin"
   );
-  assert.throws(() => documents.issueForOrder(o.id, "act"), (err) => err.code === "company_requisites_missing" && err.fields.join() === "bin");
-  assert.equal(store.documents.listByOrder(o.id).length, 0);
+  assert.equal((await store.documents.listByOrder(o.id)).length, 0);
 
-  documents.saveCompany({ name: "ИП «Базис»", bin: COMPANY.bin });
-  assert.equal(documents.issueForOrder(o.id, "act")[0].seq, 1, "для акта банковские реквизиты не нужны");
-  assert.throws(() => documents.issueForOrder(o.id, "invoice"), { code: "company_requisites_missing" });
-  documents.saveCompany(COMPANY);
-  assert.equal(documents.issueForOrder(o.id, "invoice")[0].seq, 1);
+  await documents.saveCompany({ name: "ИП «Базис»", bin: COMPANY.bin });
+  assert.equal((await documents.issueForOrder(o.id, "act"))[0].seq, 1, "для акта банковские реквизиты не нужны");
+  await assert.rejects(documents.issueForOrder(o.id, "invoice"), { code: "company_requisites_missing" });
+  await documents.saveCompany(COMPANY);
+  assert.equal((await documents.issueForOrder(o.id, "invoice"))[0].seq, 1);
 });
 
 /** HTTP-обработчик документов с подменённым модулем документов и отправкой; ответы — в replies. */
@@ -319,7 +348,7 @@ function httpHarness(fakeDocuments, fakeSender = {}) {
 
 test("MED-10: ответ API — 400 company_requisites_missing со списком полей", async () => {
   const { replies, call } = httpHarness({
-    issueForOrder: () => {
+    issueForOrder: async () => {
       throw docError("company_requisites_missing", 400, { fields: ["bin", "iik"], message: "Заполните реквизиты" });
     },
   });
@@ -332,46 +361,40 @@ test("MED-10: ответ API — 400 company_requisites_missing со списк�
 function sendingDocuments(logSend) {
   return {
     documentPdf: async () => ({ buffer: Buffer.from("%PDF"), fileName: "Счёт.pdf", doc: { id: "doc_1", title: "Счёт № 1" } }),
-    getCompany: () => ({ fields: {} }),
+    getCompany: async () => ({ fields: {} }),
     logSend,
   };
 }
 
+const dbDown = async () => {
+  throw new Error("Connection terminated unexpectedly");
+};
+
 test("LOW-20: письмо ушло, а журнал отправок не записался — менеджер видит «отправлено», ошибка в журнале сервера", async () => {
-  const { replies, rec, call } = httpHarness(
-    sendingDocuments(() => {
-      throw new Error("SQLITE_BUSY: database is locked");
-    }),
-    { sendEmail: async () => ({ recipient: "client@mail.kz" }) }
-  );
+  const { replies, rec, call } = httpHarness(sendingDocuments(dbDown), { sendEmail: async () => ({ recipient: "client@mail.kz" }) });
   await call("POST", ["documents", "send"], { channel: "email", to: "client@mail.kz", target: { type: "document", id: "doc_1" } });
   assert.equal(replies.length, 1);
   assert.equal(replies[0].status, 200);
   assert.equal(replies[0].body.ok, true);
-  assert.match(rec.errors.join("\n"), /SQLITE_BUSY/);
+  assert.match(rec.errors.join("\n"), /Connection terminated/);
 });
 
 test("LOW-20: отправка не удалась и журнал тоже — менеджер видит исходную причину", async () => {
-  const { replies, rec, call } = httpHarness(
-    sendingDocuments(() => {
-      throw new Error("SQLITE_BUSY: database is locked");
-    }),
-    {
-      sendEmail: async () => {
-        throw Object.assign(new Error("SMTP недоступен"), { code: "send_failed", status: 502 });
-      },
-    }
-  );
+  const { replies, rec, call } = httpHarness(sendingDocuments(dbDown), {
+    sendEmail: async () => {
+      throw Object.assign(new Error("SMTP недоступен"), { code: "send_failed", status: 502 });
+    },
+  });
   await call("POST", ["documents", "send"], { channel: "email", to: "client@mail.kz", target: { type: "document", id: "doc_1" } });
   assert.deepEqual(replies, [{ status: 502, body: { error: "send_failed", message: "SMTP недоступен" } }]);
-  assert.match(rec.errors.join("\n"), /SQLITE_BUSY/);
+  assert.match(rec.errors.join("\n"), /Connection terminated/);
 });
 
 test("FB-14: логотипа нет ни в public, ни в dist — одно предупреждение на все документы", async (t) => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "bazis-nologo-"));
   t.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
   const rec = recorder();
-  const { documents } = setup(t, { rootDir, log: rec.log });
+  const { documents } = await setup(t, { rootDir, log: rec.log });
   await documents.productPdf("p1");
   await documents.productPdf("p2");
   const logoWarns = rec.warns.filter((msg) => /логотип/.test(msg));

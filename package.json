@@ -21,6 +21,9 @@
     "test": "node --test \"ai/test/*.test.js\" \"antispam/test/*.test.js\" \"auth/test/*.test.js\" \"config/test/*.test.js\" \"db/test/*.test.js\" \"documents/test/*.test.js\" \"logging/test/*.test.js\" \"notify/test/*.test.js\" \"runtime/test/*.test.js\" \"security/test/*.test.js\" \"test/*.test.js\" && node scripts/i18n-check.mjs && vitest run",
     "test:web": "vitest run",
     "check:prod": "node server.js --check-config --production",
+    "db:counts": "node scripts/db.js counts",
+    "db:dump": "node scripts/db.js dump",
+    "db:restore": "node scripts/db.js restore",
     "deploy:config": "node scripts/deploy-config.mjs",
     "fonts": "node scripts/fonts.mjs",
     "i18n:check": "node scripts/i18n-check.mjs"
@@ -31,6 +34,7 @@
     "lenis": "^1.3.26",
     "nodemailer": "^10.0.15",
     "pdfmake": "^0.3.11",
+    "pg": "^8.23.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
@@ -38,6 +42,7 @@
     "unpdf": "^1.8.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@vitejs/plugin-react": "^6.1.1",

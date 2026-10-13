@@ -1,10 +1,14 @@
-﻿# Сквозная проверка образа bazis-site во временном контейнере (порт 8799, отдельный том, свой пароль; рабочие данные не трогает).
+﻿# Сквозная проверка образа bazis-site во временном контейнере (порт 8799, отдельные тома и PostgreSQL в своей сети,
+# свои пароли; рабочие данные не трогает).
 # Запуск: powershell -ExecutionPolicy Bypass -File scripts\docker-e2e.ps1 (после docker compose build).
 # Continue: в PowerShell 5.1 при Stop любой вывод docker в stderr стал бы ошибкой; сбои HTTP ловятся через -ErrorAction Stop.
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $name = "bazis-e2e"; $vol = "bazis-e2e-data"; $base = "http://127.0.0.1:8799"
+$net = "bazis-e2e-net"; $pg = "bazis-e2e-pg"; $pgVol = "bazis-e2e-pgdata"
 $pass = -join ((48..57 + 65..90 + 97..122) | Get-Random -Count 24 | % { [char]$_ })
+$pgPass = -join ((48..57 + 97..122) | Get-Random -Count 24 | % { [char]$_ })
+$dbUrl = "postgres://bazis:${pgPass}@${pg}:5432/bazis"
 $H = @{ "X-Admin-Password" = $pass }
 $ok = 0; $fail = 0
 function Check([string]$what, [bool]$cond, [string]$info = "") {
@@ -30,10 +34,28 @@ function Wait-Healthy {
   }
   return $false
 }
+function Wait-Postgres {
+  for ($i = 0; $i -lt 60; $i++) {
+    docker exec $pg pg_isready -U bazis -d bazis 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $true }
+    Start-Sleep 1
+  }
+  return $false
+}
+function Remove-All {
+  docker rm -f $name $pg 2>$null | Out-Null
+  docker volume rm $vol $pgVol 2>$null | Out-Null
+  docker network rm $net 2>$null | Out-Null
+}
 
-docker rm -f $name 2>$null | Out-Null; docker volume rm $vol 2>$null | Out-Null
+Remove-All
 try {
-  docker run -d --name $name --init -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -e ORDER_POW_BITS=0 -e ORDER_MIN_FILL_MS=0 -v "${vol}:/app/data" bazis-site | Out-Null
+  docker network create $net | Out-Null
+  docker run -d --name $pg --network $net -e POSTGRES_DB=bazis -e POSTGRES_USER=bazis -e POSTGRES_PASSWORD=$pgPass `
+    -v "${pgVol}:/var/lib/postgresql/data" postgres:17-alpine | Out-Null
+  Check "PostgreSQL запущен" (Wait-Postgres)
+  docker run -d --name $name --init --network $net -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -e DATABASE_URL=$dbUrl `
+    -e ORDER_POW_BITS=0 -e ORDER_MIN_FILL_MS=0 -v "${vol}:/app/data" bazis-site | Out-Null
   Check "контейнер стал healthy" (Wait-Healthy)
 
   $products = Api GET "/api/products"
@@ -66,17 +88,26 @@ try {
   Check "заказ сохранился после перезапуска" ($again.status -eq "in_progress")
 
   docker rm -f $name | Out-Null
-  docker run -d --name $name --init -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -v "${vol}:/app/data" bazis-site | Out-Null
+  docker run -d --name $name --init --network $net -p 127.0.0.1:8799:8787 -e ADMIN_PASSWORD=$pass -e DATABASE_URL=$dbUrl `
+    -v "${vol}:/app/data" bazis-site | Out-Null
   Check "новый контейнер на том же томе healthy" (Wait-Healthy)
   $again = Api GET "/api/orders/$($order.id)"
   Check "заказ сохранился после пересоздания контейнера" ($again.customerName -eq "Тест Докер")
+
+  docker restart $pg | Out-Null
+  Check "PostgreSQL перезапущен" (Wait-Postgres)
+  $back = $null
+  for ($i = 0; $i -lt 15 -and -not $back; $i++) {
+    try { $back = Api GET "/api/orders/$($order.id)" } catch { Start-Sleep 1 }
+  }
+  Check "после перезапуска базы сайт снова работает без своего перезапуска" ($back -and $back.status -eq "in_progress")
 
   $code = curl.exe -s -o NUL -w "%{http_code}" -H "X-Admin-Password: wrong-password-123" "$base/api/orders"
   Check "неверный пароль отклонён" ($code -eq "401" -or $code -eq "403") "($code)"
   $code = curl.exe -s -o NUL -w "%{http_code}" -H "X-Forwarded-For: 1.2.3.4" -H "X-Forwarded-Proto: http" "$base/admin.html"
   Check "запрос не через прокси не считается проксированным" ($code -eq "200") "($code)"
 } finally {
-  docker rm -f $name 2>$null | Out-Null; docker volume rm $vol 2>$null | Out-Null
+  Remove-All
   Write-Host "ИТОГО: успешно $ok, ошибок $fail"
 }
 if ($fail -gt 0) { exit 1 }

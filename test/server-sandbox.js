@@ -1,12 +1,14 @@
 /**
  * server.js во временной копии проекта: своя папка data, без .env и без data/DATA-MOVED.txt рабочей копии.
  * Зависимости берутся из node_modules проекта через NODE_PATH — ссылки на папку не создаются.
+ * База — своя PGlite в папке pgdata копии (DATABASE_URL можно передать и явно).
  */
 const fs = require("fs");
 const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const { pgliteCopy } = require("./pg");
 
 const ROOT = path.join(__dirname, "..");
 const SERVER_DIRS = ["ai", "antispam", "auth", "config", "db", "documents", "logging", "notify", "runtime", "security", "shared"];
@@ -43,10 +45,19 @@ function sandboxEnv(extra = {}) {
   return { ...env, ...extra };
 }
 
+/** База песочницы: при первом запуске — копия готовой папки PGlite, дальше та же папка (данные переживают перезапуск). */
+async function databaseEnv(sandbox, env) {
+  if ("DATABASE_URL" in env) return env;
+  const dir = path.join(sandbox.dir, "pgdata");
+  const url = fs.existsSync(dir) ? "pglite:" + dir : await pgliteCopy(dir);
+  return { DATABASE_URL: url, ...env };
+}
+
 /** Запуск до выхода (например, --check-config): { code, stdout, stderr }. */
-function runServer(sandbox, args, env = {}, timeoutMs = 20000) {
+async function runServer(sandbox, args, env = {}, timeoutMs = 20000) {
+  const fullEnv = sandboxEnv(await databaseEnv(sandbox, env));
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["server.js", ...args], { cwd: sandbox.dir, env: sandboxEnv(env) });
+    const child = spawn(process.execPath, ["server.js", ...args], { cwd: sandbox.dir, env: fullEnv });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -77,7 +88,8 @@ function freePort() {
 /** Работающий сервер: { url, output(), stop() }; готов, когда в журнале появилась строка «Базис CRM:». */
 async function startServer(sandbox, env = {}, timeoutMs = 20000) {
   const port = await freePort();
-  const child = spawn(process.execPath, ["server.js"], { cwd: sandbox.dir, env: sandboxEnv({ PORT: String(port), ...env }) });
+  const fullEnv = sandboxEnv(await databaseEnv(sandbox, { PORT: String(port), ...env }));
+  const child = spawn(process.execPath, ["server.js"], { cwd: sandbox.dir, env: fullEnv });
   let output = "";
   const exited = new Promise((resolve) => child.on("exit", resolve));
   await new Promise((resolve, reject) => {
@@ -109,4 +121,4 @@ async function startServer(sandbox, env = {}, timeoutMs = 20000) {
   };
 }
 
-module.exports = { createSandbox, runServer, startServer, ADMIN_PASSWORD };
+module.exports = { createSandbox, runServer, startServer, sandboxEnv, ADMIN_PASSWORD };

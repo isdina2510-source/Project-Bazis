@@ -3,7 +3,43 @@
  * **акцент**, «цитаты» и ссылки. Рендер через React — без innerHTML.
  */
 
-const INLINE_RE = /(«[^»]+»)|(\*\*[^*]+\*\*)|(https?:\/\/[^\s<]+)/g;
+import { CONTACT_PHONE, getTelegramProfileUrl } from "../lib/catalog.js";
+
+/** Ссылка: с https:// или адрес мессенджера без схемы (t.me/…, wa.me/…) — его тоже подменяем. */
+const INLINE_RE =
+  /(«[^»]+»)|(\*\*[^*]+\*\*)|(https?:\/\/[^\s<]+|\b(?:[\w-]+\.)?(?:t\.me|telegram\.me|telegram\.dog|wa\.me)\/[^\s<]*)/gi;
+/** Знаки после ссылки в конце фразы — не часть адреса. */
+const URL_TAIL_RE = /[.,;:!?»"'…]+$|\)+$/;
+
+/**
+ * Адрес для ссылки или null, если это не адрес. Мессенджеры в ответе ИИ — только наши контакты:
+ * модель может выдумать чужой аккаунт.
+ */
+function contactUrl(url) {
+  const full = /^https?:\/\//i.test(url) ? url : "https://" + url;
+  let host;
+  try {
+    host = new URL(full).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+  if (host === "t.me" || host.endsWith(".t.me") || host === "telegram.me" || host === "telegram.dog") {
+    return getTelegramProfileUrl();
+  }
+  if (host === "wa.me" || host === "whatsapp.com" || host.endsWith(".whatsapp.com")) return "https://wa.me/" + CONTACT_PHONE;
+  return full;
+}
+
+function splitUrlTail(raw) {
+  let url = raw;
+  let tail = "";
+  for (let match = url.match(URL_TAIL_RE); match; match = url.match(URL_TAIL_RE)) {
+    if (match[0].startsWith(")") && url.includes("(")) break;
+    tail = match[0] + tail;
+    url = url.slice(0, -match[0].length);
+  }
+  return [url, tail];
+}
 
 function renderInline(text) {
   const out = [];
@@ -25,11 +61,18 @@ function renderInline(text) {
         </span>
       );
     } else if (url) {
-      out.push(
-        <a href={url} target="_blank" rel="noopener noreferrer" key={key++}>
-          {url}
-        </a>
-      );
+      const [address, tail] = splitUrlTail(url);
+      const href = contactUrl(address);
+      if (!href) {
+        out.push(url);
+      } else {
+        out.push(
+          <a href={href} target="_blank" rel="noopener noreferrer" key={key++}>
+            {href}
+          </a>
+        );
+        if (tail) out.push(tail);
+      }
     }
     last = match.index + token.length;
   }

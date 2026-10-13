@@ -6,8 +6,11 @@
 const HEALTH_RATE_LIMIT = 60;
 const HEALTH_RATE_WINDOW_MS = 60 * 1000;
 
+/** Проверка базы не дольше этого: зависший PostgreSQL — это тоже «не отвечает», а не повисший HEALTHCHECK. */
+const PING_TIMEOUT_MS = 3000;
+
 /**
- * @param {{ ping: () => boolean, version: string, uptime?: () => number,
+ * @param {{ ping: () => boolean | Promise<boolean>, version: string, uptime?: () => number, pingTimeoutMs?: number,
  *   sendJson: Function, clientIp: (req: object) => string, checkRateLimit: Function,
  *   log?: Pick<Console, "error">, limit?: number, windowMs?: number }} deps
  */
@@ -17,11 +20,20 @@ function createHealthHandler(deps) {
   const log = deps.log || console;
   const limit = deps.limit || HEALTH_RATE_LIMIT;
   const windowMs = deps.windowMs || HEALTH_RATE_WINDOW_MS;
+  const pingTimeoutMs = deps.pingTimeoutMs || PING_TIMEOUT_MS;
   /** @type {Map<string, number[]>} */
   const buckets = new Map();
   let lastProblem = "";
 
-  return function handleHealth(req, res) {
+  function pingWithTimeout() {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`база не ответила за ${pingTimeoutMs} мс`)), pingTimeoutMs);
+    });
+    return Promise.race([Promise.resolve().then(ping), timeout]).finally(() => clearTimeout(timer));
+  }
+
+  return async function handleHealth(req, res) {
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "method_not_allowed" }, req);
       return;
@@ -32,7 +44,7 @@ function createHealthHandler(deps) {
     }
     let problem = "";
     try {
-      if (ping() !== true) problem = "база не ответила на SELECT 1";
+      if ((await pingWithTimeout()) !== true) problem = "база не ответила на SELECT 1";
     } catch (err) {
       problem = (err && err.message) || String(err);
     }

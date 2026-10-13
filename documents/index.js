@@ -74,23 +74,26 @@ function createDocuments(options) {
 
   /* ---------- реквизиты компании ---------- */
 
-  function companySettings() {
-    const saved = store.settings.get(COMPANY_KEY) || {};
+  async function companySettings() {
+    const saved = (await store.settings.get(COMPANY_KEY)) || {};
     const { values } = normalizeCompany(saved.fields || {});
     return { fields: values, stamp: saved.stamp || null, signature: saved.signature || null };
   }
 
   /** Реквизиты для админки: поля и имена файлов печати и подписи (null — не загружены; имя меняется с картинкой). */
-  function getCompany() {
-    const settings = companySettings();
+  async function getCompany() {
+    const settings = await companySettings();
     return { fields: settings.fields, stamp: settings.stamp, signature: settings.signature };
   }
 
-  function saveCompany(raw) {
+  /** Чтение и запись настройки — в одной транзакции: одновременная загрузка печати не затрёт сохранённые поля. */
+  async function saveCompany(raw) {
     const { values, errors } = normalizeCompany(raw && typeof raw === "object" ? raw : {});
     if (errors.length) throw docError("invalid_requisites", 400, { errors });
-    const current = companySettings();
-    store.settings.set(COMPANY_KEY, { ...current, fields: values });
+    await store.tx(async () => {
+      const current = await companySettings();
+      await store.settings.set(COMPANY_KEY, { ...current, fields: values });
+    });
     return getCompany();
   }
 
@@ -100,7 +103,6 @@ function createDocuments(options) {
    */
   async function setCompanyImage(kind, dataUrl) {
     if (!COMPANY_IMAGES.includes(kind)) throw docError("not_found", 404);
-    const current = companySettings();
     let fileName = null;
     if (dataUrl) {
       const { buffer, ext } = parseDataUrlImage(dataUrl, MAX_COMPANY_IMAGE_BYTES);
@@ -108,7 +110,10 @@ function createDocuments(options) {
       const file = path.join(companyDir, fileName);
       if (!fs.existsSync(file)) await writeAtomic(file, buffer);
     }
-    store.settings.set(COMPANY_KEY, { ...current, [kind]: fileName });
+    await store.tx(async () => {
+      const current = await companySettings();
+      await store.settings.set(COMPANY_KEY, { ...current, [kind]: fileName });
+    });
     return getCompany();
   }
 
@@ -123,9 +128,9 @@ function createDocuments(options) {
   }
 
   /** Текущая печать или подпись для предпросмотра в админке. */
-  function companyImage(kind) {
+  async function companyImage(kind) {
     if (!COMPANY_IMAGES.includes(kind)) return null;
-    const buffer = readCompanyAsset(companySettings()[kind]);
+    const buffer = readCompanyAsset((await companySettings())[kind]);
     return buffer ? { buffer, mime: sniffMime(buffer) || "application/octet-stream" } : null;
   }
 
@@ -186,8 +191,8 @@ function createDocuments(options) {
 
   /* ---------- счёт и акт по заказу ---------- */
 
-  function loadOrder(orderId) {
-    const order = store.orders.get(orderId);
+  async function loadOrder(orderId) {
+    const order = await store.orders.get(orderId);
     if (!order) throw docError("not_found", 404);
     return order;
   }
@@ -198,8 +203,8 @@ function createDocuments(options) {
   }
 
   /** Покупатель: реквизиты из карточки клиента, а если их нет — имя и телефон из заказа. */
-  function buyerFor(order) {
-    const client = order.clientId ? store.clients.get(order.clientId) : null;
+  async function buyerFor(order) {
+    const client = order.clientId ? await store.clients.get(order.clientId) : null;
     const req = (client && client.requisites) || {};
     const pick = (key) => (req[key] == null ? "" : String(req[key]));
     return {
@@ -264,10 +269,10 @@ function createDocuments(options) {
     companyAssets(settings);
   }
 
-  function issueOne(order, kind, bucket, replaces) {
-    const settings = companySettings();
+  async function issueOne(order, kind, bucket, replaces) {
+    const settings = await companySettings();
     assertIssuable(kind, settings);
-    const source = sourceOf(bucket, buyerFor(order));
+    const source = sourceOf(bucket, await buyerFor(order));
     const now = new Date().toISOString();
     const year = localParts(now).year;
     return store.documents.issue({
@@ -301,16 +306,21 @@ function createDocuments(options) {
    * Документы заказа с признаком «заказ изменился после выпуска» у действующих.
    * buyerEmail — текущий e-mail покупателя из карточки клиента, чтобы подставить его при отправке.
    */
-  function listForOrder(orderId) {
-    const order = loadOrder(orderId);
-    const buyer = buyerFor(order);
+  async function listForOrder(orderId) {
+    const order = await loadOrder(orderId);
+    const buyer = await buyerFor(order);
     const hashes = new Map(currencyBuckets(order).map((bucket) => [bucket.currency, sourceOf(bucket, buyer).hash]));
-    return store.documents.listByOrder(order.id).map((doc) => ({
-      ...publicDoc(doc),
-      outdated: doc.status === "active" && hashes.get(doc.currency) !== doc.sourceHash,
-      buyerEmail: buyer.email,
-      sends: store.documents.sends(doc.id),
-    }));
+    const docs = await store.documents.listByOrder(order.id);
+    const result = [];
+    for (const doc of docs) {
+      result.push({
+        ...publicDoc(doc),
+        outdated: doc.status === "active" && hashes.get(doc.currency) !== doc.sourceHash,
+        buyerEmail: buyer.email,
+        sends: await store.documents.sends(doc.id),
+      });
+    }
+    return result;
   }
 
   function publicDoc(doc) {
@@ -321,29 +331,37 @@ function createDocuments(options) {
   /**
    * Счёт или акт по заказу — по документу на каждую валюту позиций.
    * Если действующий документ уже есть, он возвращается как есть (номер не тратится).
+   * Проверка «есть ли действующий» и выпуск — одна транзакция: двойное нажатие не выпустит два документа.
    */
-  function issueForOrder(orderId, kind) {
+  async function issueForOrder(orderId, kind) {
     if (!KINDS[kind]) throw docError("invalid_kind");
-    const order = loadOrder(orderId);
-    assertDocumentable(order);
-    const buckets = currencyBuckets(order);
-    if (!buckets.length) throw docError("empty_order");
-    const docs = buckets.map((bucket) => store.documents.active(order.id, kind, bucket.currency) || issueOne(order, kind, bucket));
-    const ids = new Set(docs.map((doc) => doc.id));
-    return listForOrder(order.id).filter((doc) => ids.has(doc.id));
+    return store.tx(async () => {
+      const order = await loadOrder(orderId);
+      assertDocumentable(order);
+      const buckets = currencyBuckets(order);
+      if (!buckets.length) throw docError("empty_order");
+      const ids = new Set();
+      for (const bucket of buckets) {
+        const doc = (await store.documents.active(order.id, kind, bucket.currency)) || (await issueOne(order, kind, bucket));
+        ids.add(doc.id);
+      }
+      return (await listForOrder(order.id)).filter((doc) => ids.has(doc.id));
+    });
   }
 
   /** Перевыпуск по текущим данным заказа: новый номер, старый документ аннулируется. */
-  function reissue(docId) {
-    const doc = store.documents.get(docId, false);
-    if (!doc) throw docError("not_found", 404);
-    if (doc.status !== "active") throw docError("document_annulled");
-    const order = loadOrder(doc.orderId);
-    assertDocumentable(order);
-    const bucket = currencyBuckets(order).find((item) => item.currency === doc.currency);
-    if (!bucket) throw docError("currency_gone");
-    const fresh = issueOne(order, doc.kind, bucket, doc.id);
-    return listForOrder(order.id).find((item) => item.id === fresh.id);
+  async function reissue(docId) {
+    return store.tx(async () => {
+      const doc = await store.documents.get(docId, false);
+      if (!doc) throw docError("not_found", 404);
+      if (doc.status !== "active") throw docError("document_annulled");
+      const order = await loadOrder(doc.orderId);
+      assertDocumentable(order);
+      const bucket = currencyBuckets(order).find((item) => item.currency === doc.currency);
+      if (!bucket) throw docError("currency_gone");
+      const fresh = await issueOne(order, doc.kind, bucket, doc.id);
+      return (await listForOrder(order.id)).find((item) => item.id === fresh.id);
+    });
   }
 
   /**
@@ -351,7 +369,7 @@ function createDocuments(options) {
    * Если заданная в снимке печать или подпись не читается — ошибка, а не PDF без неё (и в кэш ничего не пишется).
    */
   async function documentPdf(docId) {
-    const doc = store.documents.get(docId, true);
+    const doc = await store.documents.get(docId, true);
     if (!doc || !doc.snapshot) throw docError("not_found", 404);
     const annulled = doc.status !== "active";
     const file = path.join(pdfDir, String(doc.year), doc.id + (annulled ? "-annulled" : "") + ".pdf");
@@ -395,7 +413,7 @@ function createDocuments(options) {
    * @param {{ ids?: string[], showPrices?: boolean, showStock?: boolean }} opts
    */
   async function catalogPdf(opts = {}) {
-    let products = store.products.list();
+    let products = await store.products.list();
     if (Array.isArray(opts.ids) && opts.ids.length) {
       const wanted = new Set(opts.ids.map(String));
       products = products.filter((product) => wanted.has(product.id));
@@ -412,7 +430,7 @@ function createDocuments(options) {
     }
     const other = items.filter((_, index) => !known.has(products[index].category));
     if (other.length) groups.push({ title: "Прочее", lead: "", items: other });
-    const settings = companySettings();
+    const settings = await companySettings();
     const now = new Date().toISOString();
     const buffer = await renderer.render("catalog", {
       company: settings.fields,
@@ -429,9 +447,9 @@ function createDocuments(options) {
   }
 
   async function productPdf(productId) {
-    const product = store.products.get(productId);
+    const product = await store.products.get(productId);
     if (!product) throw docError("not_found", 404);
-    const settings = companySettings();
+    const settings = await companySettings();
     const buffer = await renderer.render("product", {
       company: settings.fields,
       logo: logo(),
@@ -442,10 +460,10 @@ function createDocuments(options) {
   }
 
   async function leadPdf(orderId) {
-    const order = loadOrder(orderId);
+    const order = await loadOrder(orderId);
     if (order.channel !== "site") throw docError("not_a_lead");
     const direction = CATEGORIES.find((item) => item.id === (order.lead && order.lead.direction));
-    const settings = companySettings();
+    const settings = await companySettings();
     const buffer = await renderer.render("lead", {
       company: settings.fields,
       logo: logo(),

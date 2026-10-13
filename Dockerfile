@@ -1,5 +1,6 @@
 # Сайт «Базис» + CRM в Docker. Запуск: docker compose up -d --build (настройки — в .env, см. docker-compose.yml).
-# Node 22.13+ нужен для встроенного node:sqlite.
+# База — PostgreSQL (сервис postgres в docker-compose.yml). Node 22.13+ нужен для разового переноса из старой базы
+# SQLite (встроенный node:sqlite); тесты при сборке идут на PGlite (PostgreSQL в WebAssembly) без отдельного сервера.
 
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
@@ -12,7 +13,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
 # Тесты — до сборки: с ошибкой в коде образ не соберётся и работающий сайт не будет заменён.
-RUN npm test
+# Манифест картинок (src/generated) не копируется в образ, а тесты витрины его импортируют.
+RUN npm run images && npm test
 # Адрес сайта зашивается в сборку (canonical, ссылки между сайтами) — передаётся из .env через docker-compose.yml.
 ARG SITE_DOMAIN=""
 ARG SITE_URL=""
@@ -43,6 +45,8 @@ COPY runtime ./runtime
 COPY security ./security
 COPY shared ./shared
 COPY public ./public
+# Обслуживание базы в контейнере: docker compose exec bazis node scripts/db.js counts | dump | restore.
+COPY scripts/db.js ./scripts/db.js
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-media ./dist-media
 COPY --from=build /app/images ./images
@@ -50,7 +54,7 @@ COPY --from=build /app/images ./images
 RUN mkdir -p data logs images/uploads && chown -R node:node data logs images/uploads
 USER node
 EXPOSE 8787
-# /api/health отвечает 200, только если база открыта и отвечает на SELECT 1. unhealthy Docker сам не лечит —
+# /api/health отвечает 200, только если PostgreSQL отвечает на SELECT 1. unhealthy Docker сам не лечит —
 # контейнер перезапускает watchdog (scripts/docker-autostart.ps1 watch).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:8787/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]

@@ -20,7 +20,7 @@ const CRASH_FLUSH_MS = 3000;
 
 /**
  * @param {{ server: { close(cb: () => void): void, closeIdleConnections(): void },
- *   closeDocuments?: () => Promise<unknown> | unknown, closeStore?: () => void, closeLog?: () => void,
+ *   closeDocuments?: () => Promise<unknown> | unknown, closeStore?: () => Promise<unknown> | unknown, closeLog?: () => void,
  *   timeoutMs?: number, log?: Pick<Console, "log" | "warn" | "error">, exit?: (code: number) => void }} options
  * @returns {(reason: string) => void}
  */
@@ -41,7 +41,7 @@ function createShutdown(options) {
     }
     if (options.closeStore) {
       try {
-        options.closeStore();
+        await options.closeStore();
       } catch (err) {
         log.error("Остановка: не удалось закрыть базу:", err);
       }

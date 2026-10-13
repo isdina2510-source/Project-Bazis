@@ -76,16 +76,16 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
 
   async function companyRoute(req, res, sub) {
     if (!sub) {
-      if (req.method === "GET") return sendJson(res, 200, documents.getCompany(), req);
+      if (req.method === "GET") return sendJson(res, 200, await documents.getCompany(), req);
       if (req.method === "PUT") {
         const body = await readJsonObject(req, MAX_SETTINGS_BODY_BYTES);
-        return sendJson(res, 200, documents.saveCompany(body.fields || body), req);
+        return sendJson(res, 200, await documents.saveCompany(body.fields || body), req);
       }
       return methodNotAllowed(res, req);
     }
     if (sub !== "stamp" && sub !== "signature") return sendJson(res, 404, { error: "not_found" }, req);
     if (req.method === "GET") {
-      const image = documents.companyImage(sub);
+      const image = await documents.companyImage(sub);
       if (!image) return sendJson(res, 404, { error: "not_found" }, req);
       res.writeHead(200, {
         ...corsHeaders(req),
@@ -105,10 +105,10 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
 
   async function orderRoute(req, res, orderId, sub) {
     if (sub === "documents") {
-      if (req.method === "GET") return sendJson(res, 200, documents.listForOrder(orderId), req);
+      if (req.method === "GET") return sendJson(res, 200, await documents.listForOrder(orderId), req);
       if (req.method === "POST") {
         const body = await readJsonObject(req);
-        return sendJson(res, 201, documents.issueForOrder(orderId, String(body.kind || "")), req);
+        return sendJson(res, 201, await documents.issueForOrder(orderId, String(body.kind || "")), req);
       }
       return methodNotAllowed(res, req);
     }
@@ -145,7 +145,7 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
     }
     const attachment = await buildAttachment(body.target);
     const comment = String(body.comment || "").trim().slice(0, MAX_COMMENT);
-    const company = documents.getCompany().fields;
+    const company = (await documents.getCompany()).fields;
     const signature = [company.name, company.phone, company.email].filter(Boolean).join("\n");
     let result;
     try {
@@ -165,21 +165,21 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
           });
     } catch (err) {
       if (attachment.documentId) {
-        logSendSafely({ documentId: attachment.documentId, channel, recipient: String(body.to || ""), ok: false, error: err.message });
+        await logSendSafely({ documentId: attachment.documentId, channel, recipient: String(body.to || ""), ok: false, error: err.message });
       }
       log.warn("PDF: отправка не удалась: " + err.message);
       throw err;
     }
     // Документ уже у получателя: сбой журнала не должен выглядеть как неудачная отправка, иначе менеджер отправит дубль.
     if (attachment.documentId) {
-      logSendSafely({ documentId: attachment.documentId, channel, recipient: result.recipient, ok: true });
+      await logSendSafely({ documentId: attachment.documentId, channel, recipient: result.recipient, ok: true });
     }
     return sendJson(res, 200, { ok: true, ...result }, req);
   }
 
-  function logSendSafely(entry) {
+  async function logSendSafely(entry) {
     try {
-      documents.logSend(entry);
+      await documents.logSend(entry);
     } catch (err) {
       log.error(
         `PDF: не удалось записать в журнал отправок (документ ${entry.documentId}, ${entry.channel}, ` +
@@ -203,7 +203,7 @@ function createDocumentsHttpHandler(getDocuments, sender, deps) {
     }
     if (docId && sub === "reissue") {
       if (req.method !== "POST") return methodNotAllowed(res, req);
-      return sendJson(res, 201, documents.reissue(docId), req);
+      return sendJson(res, 201, await documents.reissue(docId), req);
     }
     return sendJson(res, 404, { error: "not_found" }, req);
   }

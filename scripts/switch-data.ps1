@@ -1,11 +1,16 @@
-﻿# Где живут данные сайта (база, документы, загруженные картинки): в папке data или в Docker (тома project_bazis-*).
-# Рабочая копия всегда одна: у неактивной в папке данных лежит DATA-MOVED.txt, и server.js на ней не запускается,
-# чтобы заказы не разошлись по двум базам.
+﻿# Где работает сайт и лежат его файлы (выпущенные документы, печать и подпись, копии базы, загруженные картинки):
+# в папке data или в Docker (тома project_bazis-*). Рабочая копия файлов всегда одна: у неактивной в папке данных лежит
+# DATA-MOVED.txt, и server.js на ней не запускается.
+#
+# База данных при переключении не переносится: она одна — PostgreSQL в Docker (сервис postgres в docker-compose.yml).
+# Сайт в Docker подключается к ней внутри Docker, сайт без Docker — по DATABASE_URL из .env (127.0.0.1:POSTGRES_HOST_PORT).
+# Поэтому и для запуска без Docker нужен работающий Docker Desktop (включите в нём «Start when you sign in»).
+#
 #   to-docker  — перенести data и images\uploads в Docker, включить автозапуск (switch-to-docker.bat);
-#   to-windows — вернуть данные из Docker в папку data, выключить автозапуск Docker (switch-to-windows.bat);
-#   mark       — данные уже перенесены в Docker вручную: только пометить папку data устаревшей;
+#   to-windows — вернуть файлы из Docker в папку data, выключить автозапуск сайта в Docker (switch-to-windows.bat);
+#   mark       — файлы уже перенесены в Docker вручную: только пометить папку data устаревшей;
 #   status     — где сейчас рабочая копия.
-# Перенос засчитывается, только если база цела и число записей до и после копирования совпало (scripts/db-check.js).
+# Перенос засчитывается, только если отпечаток файлов (scripts/files-check.js) до и после копирования совпал.
 param(
   [ValidateSet("to-docker", "to-windows", "mark", "status")]
   [string]$Action = "status",
@@ -34,9 +39,9 @@ function Invoke-Checked([string]$What) {
   $result.Output
 }
 
-# Разовый контейнер из образа сайта с подключёнными папками компьютера (сервер в нём не запускается).
+# Разовый контейнер из образа сайта с подключёнными папками компьютера (сервер в нём не запускается, база не нужна).
 function Invoke-InImage([string[]]$Mounts, [string[]]$Command, [string]$What) {
-  $volumeArgs = @()
+  $volumeArgs = @("-v", "${PSScriptRoot}:/scripts:ro")
   foreach ($mount in $Mounts) { $volumeArgs += @("-v", $mount) }
   $runArgs = @("compose", "-f", $ComposeFile, "run", "--rm", "--no-deps", "-T") + $volumeArgs + @("bazis") + $Command
   Invoke-Checked $What @runArgs
@@ -53,37 +58,62 @@ function Get-HostNode {
   $bundled = Join-Path $Root ".tools\node-v22.20.0-win-x64\node.exe"
   if (Test-Path $bundled) { return $bundled }
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
-  if (-not $node) { throw "Node.js не найден — нужен для проверки базы." }
+  if (-not $node) { throw "Node.js не найден — нужен для проверки данных." }
   $node.Source
 }
 
-# Строка counts из db-check.js; при повреждении базы — исключение.
-function Get-CountsLine([string]$Output, [string]$Where) {
-  if ($Output -notmatch "integrity=ok") { throw "База $Where повреждена или не открылась:`n$Output" }
-  ($Output -split "`r?`n" | Where-Object { $_ -like "counts *" } | Select-Object -First 1)
-}
-
-function Test-HostDb([string]$DataDir, [string]$Where) {
-  $db = Join-Path $DataDir "bazis.db"
-  if (-not (Test-Path $db)) { return "" }
+function Invoke-HostNode([string[]]$NodeArgs) {
   $ErrorActionPreference = "Continue"
-  $out = (& (Get-HostNode) --no-warnings (Join-Path $PSScriptRoot "db-check.js") $db 2>&1 | Out-String).Trim()
-  Get-CountsLine $out $Where
+  $out = & (Get-HostNode) --no-warnings @NodeArgs 2>&1
+  [pscustomobject]@{ Code = $LASTEXITCODE; Output = ($out | Out-String).Trim() }
 }
 
-function Test-VolumeDb([string]$Where) {
-  $scripts = "${PSScriptRoot}:/scripts:ro"
-  $exists = Invoke-InImage @() @("sh", "-c", "test -f /app/data/bazis.db && echo yes || echo no") "Проверка базы в Docker"
-  if ($exists -notmatch "yes") { return "" }
-  $ErrorActionPreference = "Continue"
-  $result = Invoke-Docker compose -f $ComposeFile run --rm --no-deps -T -v $scripts bazis node --no-warnings /scripts/db-check.js /app/data/bazis.db
-  Get-CountsLine $result.Output $Where
+# Строка files=… из files-check.js; при ошибке — исключение.
+function Get-FilesLine([string]$Output, [string]$Where) {
+  $line = $Output -split "`r?`n" | Where-Object { $_ -like "files=*" } | Select-Object -First 1
+  if (-not $line) { throw "Не удалось проверить файлы ${Where}:`n$Output" }
+  $line
 }
 
-# Рабочая ли копия в Docker: есть база и нет отметки о переносе.
+function Test-HostFiles([string]$DataDir, [string]$UploadsDir, [string]$Where) {
+  $result = Invoke-HostNode @((Join-Path $PSScriptRoot "files-check.js"), $DataDir, $UploadsDir)
+  Get-FilesLine $result.Output $Where
+}
+
+function Test-VolumeFiles([string]$Where) {
+  $out = Invoke-InImage @() @("node", "--no-warnings", "/scripts/files-check.js", "/app/data", "/app/images/uploads") "Проверка файлов в Docker"
+  Get-FilesLine $out $Where
+}
+
+# Рабочая ли копия в Docker: в томе есть файлы и нет отметки о переносе.
 function Test-VolumeActive {
-  $state = Invoke-InImage @() @("sh", "-c", "test -f /app/data/bazis.db && test ! -f /app/data/$MarkerName && echo active || echo inactive") "Проверка данных в Docker"
-  $state -match "active" -and $state -notmatch "inactive"
+  $state = Invoke-InImage @() @("sh", "-c", "if [ ! -f /app/data/$MarkerName ] && ls -A /app/data | grep -q .; then echo active; else echo inactive; fi") "Проверка данных в Docker"
+  $state -match "(?m)^active" -and $state -notmatch "inactive"
+}
+
+function Read-EnvValue([string]$Name) {
+  $file = Join-Path $Root ".env"
+  if (-not (Test-Path $file)) { return "" }
+  $line = Get-Content -Encoding UTF8 $file | Where-Object { $_ -match "^\s*$Name\s*=" } | Select-Object -Last 1
+  if (-not $line) { return "" }
+  ($line -replace "^\s*$Name\s*=\s*", "").Trim().Trim('"').Trim("'")
+}
+
+# Сайт без Docker должен работать с той же базой, что и в Docker (сервис postgres, опубликованный на 127.0.0.1).
+function Assert-SharedDatabase {
+  $url = Read-EnvValue "DATABASE_URL"
+  $port = Read-EnvValue "POSTGRES_HOST_PORT"
+  if (-not $port) { $port = "5432" }
+  $expected = "127.0.0.1:$port/bazis или localhost:$port/bazis"
+  if (-not $url) { throw "В .env не задан DATABASE_URL. Для запуска без Docker укажите базу из Docker: postgres://bazis:<POSTGRES_PASSWORD>@127.0.0.1:$port/bazis" }
+  try { $uri = [Uri]$url } catch { throw "DATABASE_URL в .env — не адрес PostgreSQL." }
+  $hostOk = @("127.0.0.1", "localhost") -contains $uri.Host
+  $uriPort = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+  if (-not ($hostOk -and "$uriPort" -eq $port -and $uri.AbsolutePath.TrimStart("/") -eq "bazis")) {
+    throw "DATABASE_URL в .env указывает не на базу из Docker ($expected), а на $($uri.Host):$uriPort$($uri.AbsolutePath). " +
+      "Переключение перенесло бы только файлы, а заказы остались бы в другой базе. Перенесите базу вручную: " +
+      "npm run db:dump (копия из базы по DATABASE_URL), затем восстановите её в базу Docker (README, раздел «База данных»)."
+  }
 }
 
 function Assert-NativeStopped {
@@ -101,20 +131,21 @@ function Write-Marker([string]$Path, [string]$Text) {
   [IO.File]::WriteAllText($Path, $Text + "`r`n", (New-Object Text.UTF8Encoding($false)))
 }
 
-$DockerNote = "Данные перенесены в Docker ($Stamp). Сайт запускается через start-site.bat (он запустит Docker), " +
+$DockerNote = "Файлы сайта перенесены в Docker ($Stamp). Сайт запускается через start-site.bat (он запустит Docker), " +
   "обновление — update-site.bat. Вернуться к запуску без Docker: switch-to-windows.bat."
-$WindowsNote = "Данные перенесены из Docker обратно в папку data ($Stamp). Вернуться в Docker: switch-to-docker.bat."
+$WindowsNote = "Файлы сайта перенесены из Docker обратно в папку data ($Stamp). Вернуться в Docker: switch-to-docker.bat."
 
 switch ($Action) {
   "status" {
-    if (Test-Path $HostMarker) { Write-Host "Рабочие данные — в Docker. Папка data устарела." }
-    else { Write-Host "Рабочие данные — в папке data (запуск без Docker)." }
+    if (Test-Path $HostMarker) { Write-Host "Сайт работает в Docker. Папка data устарела." }
+    else { Write-Host "Сайт работает без Docker (папка data)." }
+    Write-Host "База данных — PostgreSQL в Docker (сервис postgres), общая для обоих режимов."
   }
 
   "mark" {
     if (Test-Path $HostMarker) { Write-Host "Папка data уже помечена как устаревшая."; break }
     Assert-Engine
-    if (-not (Test-VolumeActive)) { throw "В Docker нет рабочей базы — помечать папку data устаревшей нельзя." }
+    if (-not (Test-VolumeActive)) { throw "В Docker нет рабочих данных сайта — помечать папку data устаревшей нельзя." }
     Write-Marker $HostMarker $DockerNote
     Write-Host "Папка data помечена как устаревшая: сервер без Docker на ней больше не запустится."
   }
@@ -123,33 +154,38 @@ switch ($Action) {
     if (Test-Path $HostMarker) { Write-Host "Данные уже в Docker."; break }
     Assert-NativeStopped
     Assert-Engine
+    Assert-SharedDatabase
     Write-Host "Сборка образа сайта (несколько минут)..."
     Invoke-Checked "Сборка образа" compose -f $ComposeFile build | Out-Null
     foreach ($dir in @($HostData, $HostUploads)) { New-Item -ItemType Directory -Force $dir | Out-Null }
-    $source = Test-HostDb $HostData "в папке data"
-    Write-Host "Папка data: $(if ($source) { $source } else { 'базы нет — сайт в Docker начнёт с пустой' })"
+    $source = Test-HostFiles $HostData $HostUploads "в папке data"
+    Write-Host "Папка data и картинки: $source"
+    if (Test-Path (Join-Path $HostData "bazis.db")) {
+      Write-Host "В папке data есть старая база SQLite (bazis.db): сайт в Docker перенесёт её в PostgreSQL при первом запуске."
+    }
 
     $volumeActive = Test-VolumeActive
     if ($volumeActive -and -not $Force) {
-      throw "В Docker уже есть рабочая база — перенос перезаписал бы её. Если она точно не нужна, запустите с -Force " +
-        "(её копия сохранится в папке data-docker-backup-<дата>)."
+      throw "В Docker уже есть рабочие файлы сайта — перенос перезаписал бы их. Если они точно не нужны, запустите с -Force " +
+        "(их копия сохранится в папке data-docker-backup-<дата>)."
     }
-    Invoke-Checked "Остановка контейнера" compose -f $ComposeFile down | Out-Null
+    Invoke-Checked "Остановка сайта в Docker" compose -f $ComposeFile stop bazis | Out-Null
+    Invoke-Checked "Удаление контейнера сайта" compose -f $ComposeFile rm -f bazis | Out-Null
     if ($volumeActive) {
       $backup = Join-Path $Root "data-docker-backup-$Stamp"
       New-Item -ItemType Directory $backup | Out-Null
-      Invoke-InImage @("${backup}:/backup") @("sh", "-c", "cp -r /app/data/. /backup/") "Копия базы из Docker" | Out-Null
-      Write-Host "Прежняя база из Docker сохранена в $backup"
+      Invoke-InImage @("${backup}:/backup") @("sh", "-c", "cp -r /app/data/. /backup/") "Копия файлов из Docker" | Out-Null
+      Write-Host "Прежние файлы из Docker сохранены в $backup"
     }
 
     Invoke-InImage @("${HostData}:/import/data:ro", "${HostUploads}:/import/uploads:ro") @("sh", "-c",
       "find /app/data /app/images/uploads -mindepth 1 -delete && cp -r /import/data/. /app/data/ && rm -f /app/data/$MarkerName && cp -r /import/uploads/. /app/images/uploads/"
     ) "Копирование данных в Docker" | Out-Null
 
-    $copied = Test-VolumeDb "в Docker"
-    if ($copied -ne $source) { throw "Число записей после копирования не совпало (было: $source; стало: $copied). Папка data не тронута." }
+    $copied = Test-VolumeFiles "в Docker"
+    if ($copied -ne $source) { throw "Файлы после копирования не совпали (было: $source; стало: $copied). Папка data не тронута." }
     Write-Marker $HostMarker $DockerNote
-    Write-Host "Данные перенесены и проверены: $copied"
+    Write-Host "Файлы перенесены и проверены: $copied"
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Autostart install
     if ($LASTEXITCODE -ne 0) { throw "Не удалось установить автозапуск (install-docker-autostart.bat)." }
@@ -161,20 +197,21 @@ switch ($Action) {
   "to-windows" {
     if (-not (Test-Path $HostMarker)) { Write-Host "Данные уже в папке data (запуск без Docker)."; break }
     Assert-Engine
-    if (-not (Test-VolumeActive)) { throw "В Docker нет рабочей базы — переносить нечего. Папка data не тронута." }
+    Assert-SharedDatabase
+    if (-not (Test-VolumeActive)) { throw "В Docker нет рабочих данных сайта — переносить нечего. Папка data не тронута." }
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Autostart uninstall | Out-Null
-    # stop, а не down: контейнер завершается штатно, база закрывается, тома остаются.
-    Invoke-Checked "Остановка сайта в Docker" compose -f $ComposeFile stop | Out-Null
-    $source = Test-VolumeDb "в Docker"
+    # Останавливается только сайт: база остаётся работать в Docker — к ней подключится сайт без Docker.
+    Invoke-Checked "Остановка сайта в Docker" compose -f $ComposeFile stop bazis | Out-Null
+    $source = Test-VolumeFiles "в Docker"
 
     $stage = Join-Path $Root "data-from-docker-$Stamp"
     New-Item -ItemType Directory -Force (Join-Path $stage "data"), (Join-Path $stage "uploads") | Out-Null
     Invoke-InImage @("${stage}:/stage") @("sh", "-c", "cp -r /app/data/. /stage/data/ && cp -r /app/images/uploads/. /stage/uploads/") `
       "Копирование данных из Docker" | Out-Null
-    $copied = Test-HostDb (Join-Path $stage "data") "скопированная из Docker"
+    $copied = Test-HostFiles (Join-Path $stage "data") (Join-Path $stage "uploads") "скопированные из Docker"
     if ($copied -ne $source) {
-      throw "Число записей после копирования не совпало (было: $source; стало: $copied). Данные в Docker не тронуты; " +
+      throw "Файлы после копирования не совпали (было: $source; стало: $copied). Данные в Docker не тронуты; " +
         "запустить сайт снова: start-site.bat."
     }
 
@@ -184,10 +221,16 @@ switch ($Action) {
     Copy-Item (Join-Path $stage "uploads\*") $HostUploads -Recurse -Force -ErrorAction SilentlyContinue
     Write-Marker (Join-Path $stage $MarkerName) $WindowsNote
     Invoke-InImage @("${stage}:/stage:ro") @("cp", "/stage/$MarkerName", "/app/data/$MarkerName") "Отметка в Docker" | Out-Null
-    Invoke-Checked "Удаление контейнера" compose -f $ComposeFile down | Out-Null
+    Invoke-Checked "Удаление контейнера сайта" compose -f $ComposeFile rm -f bazis | Out-Null
+    Invoke-Checked "Запуск базы" compose -f $ComposeFile up -d postgres | Out-Null
     Remove-Item -Recurse -Force $stage
-    Write-Host "Данные перенесены из Docker в папку data и проверены: $copied"
+
+    $db = Invoke-HostNode @((Join-Path $PSScriptRoot "db.js"), "counts")
+    if ($db.Code -ne 0) { Write-Host "ВНИМАНИЕ: база по DATABASE_URL из .env не отвечает:`n$($db.Output)" }
+    else { Write-Host $db.Output }
+    Write-Host "Файлы перенесены из Docker в папку data и проверены: $copied"
     Write-Host "Прежняя папка data сохранена как $old (её можно удалить)."
+    Write-Host "База осталась в Docker: Docker Desktop должен запускаться при входе в Windows (настройка «Start when you sign in»)."
     Write-Host "Запуск сайта: start-site.bat или install-service.bat (служба)."
   }
 }
