@@ -83,7 +83,7 @@ test("вопрос не по теме — стандартный отказ с �
   const result = await ai.run("consultant", { message: "Какая завтра погода?", catalog: CATALOG });
   assert.equal(result.offTopic, true);
   assert.equal(result.handoff, false);
-  assert.match(result.text, /не относится к услугам ИП «Базис»/);
+  assert.match(result.text, /не относится к услугам Dinara BILab/);
   assert.match(result.text, /управление бизнесом, инфраструктура/);
 });
 

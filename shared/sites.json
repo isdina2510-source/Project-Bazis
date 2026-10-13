@@ -2,7 +2,7 @@
   "default": "bazis",
   "sites": {
     "bazis": {
-      "label": "Базис",
+      "label": "Dinara BILab",
       "categories": ["management", "infrastructure"],
       "hosts": ["127.0.0.1", "localhost"],
       "subdomain": "",
@@ -12,7 +12,7 @@
       "admin": true
     },
     "media": {
-      "label": "Базис Медиа",
+      "label": "Dinara BILab Медиа",
       "enabledEnv": "MEDIA_SITE_ENABLED",
       "categories": ["infrastructure", "media"],
       "hosts": ["media.localhost"],

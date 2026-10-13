@@ -103,7 +103,7 @@ export default defineConfig(({ mode, command }) => {
   return {
     plugins: [
       react(),
-      // У медиа-сайта своя главная без портрета — preload картинки «Базиса» ей не нужен.
+      // У медиа-сайта своя главная без портрета — preload картинки Dinara BILab ей не нужен.
       ...(siteId === sitesConfig.default ? [heroPreload()] : []),
       siteTheme(siteId, site),
       i18nHtml({ origin, site: siteId }),

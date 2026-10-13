@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import AnchorLink from "../components/AnchorLink.jsx";
 import ArticleCard from "../components/ArticleCard.jsx";
+import BrandText from "../components/BrandText.jsx";
 import { CatalogUnavailable, StaleCatalogNote } from "../components/CatalogNotices.jsx";
 import ContactSection from "../components/ContactSection.jsx";
 import ResponsiveImage from "../components/ResponsiveImage.jsx";
@@ -36,7 +37,9 @@ export default function MediaHomePage() {
     <main id="top" className="media-home">
       <section className="mh-hero">
         <div className="mh-hero-copy">
-          <p className="mh-eyebrow">{t("media_home.hero.eyebrow")}</p>
+          <p className="mh-eyebrow">
+            <BrandText>{t("media_home.hero.eyebrow")}</BrandText>
+          </p>
           <h1>
             {t("media_home.hero.title_line1")}
             <br />

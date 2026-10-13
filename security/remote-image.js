@@ -116,7 +116,7 @@ function requestOnce(url, target, { maxBytes, timeoutMs, request }) {
       url,
       {
         method: "GET",
-        headers: { Accept: "image/webp,image/png,image/jpeg,image/gif", "User-Agent": "BazisCRM/1.0 (+product image)" },
+        headers: { Accept: "image/webp,image/png,image/jpeg,image/gif", "User-Agent": "DinaraBILabCRM/1.0 (+product image)" },
         // Соединяемся с уже проверенным адресом: повторный DNS-запрос мог бы вернуть внутренний IP.
         lookup: (_hostname, options, callback) => {
           if (options && options.all) callback(null, [{ address: target.address, family: target.family }]);

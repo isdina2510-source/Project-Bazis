@@ -71,7 +71,7 @@ export async function exportXlsx(report) {
   const excelModule = await lazyImport(() => import("exceljs"));
   const ExcelJS = excelModule.default || excelModule;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Базис CRM";
+  workbook.creator = "Dinara BILab CRM";
   workbook.created = report.generatedAt;
 
   const sheet = workbook.addWorksheet("Отчёт");
@@ -214,7 +214,7 @@ export async function exportPdf(report) {
     pageSize: "A4",
     pageOrientation: landscape ? "landscape" : "portrait",
     pageMargins: [margin, margin, margin, margin + 8],
-    info: { title: report.title, creator: "Базис CRM" },
+    info: { title: report.title, creator: "Dinara BILab CRM" },
     defaultStyle: { font: "Roboto", fontSize: 8.5, lineHeight: 1.15 },
     styles: {
       title: { fontSize: 16, bold: true, color: "#1b1b1b" },
@@ -244,7 +244,7 @@ export async function exportPdf(report) {
     ],
     footer: (current, total) => ({
       columns: [
-        { text: "ИП «Базис» · CRM", style: "meta" },
+        { text: "Dinara BILab · CRM", style: "meta" },
         { text: current + " / " + total, style: "meta", alignment: "right" },
       ],
       margin: [margin, 8, margin, 0],

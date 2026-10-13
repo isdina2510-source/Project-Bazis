@@ -138,7 +138,7 @@ export function getClientCardWhatsAppUrl(client) {
   const name = String(client.name || "").trim();
   const text =
     (name ? "Здравствуйте, " + name + "!" : "Здравствуйте!") +
-    "\n\nПишу вам из ИП «Базис». Готова обсудить ваш запрос и следующие шаги.";
+    "\n\nПишу вам из Dinara BILab. Готова обсудить ваш запрос и следующие шаги.";
   return whatsappUrl(text, phone);
 }
 

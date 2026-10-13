@@ -2,6 +2,7 @@
 # Остановка:   docker compose down        (данные остаются в томах)
 # Журнал:      docker compose logs -f
 # Настройки (ADMIN_PASSWORD, POSTGRES_PASSWORD, OPENAI_API_KEY, SITE_DOMAIN…) — в .env рядом с этим файлом.
+# Домен по умолчанию — dinarabi.com (и www.dinarabi.com), если SITE_DOMAIN в .env не задан.
 # После изменения SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL / MEDIA_SITE_ENABLED нужна пересборка: docker compose up -d --build.
 # Автозапуск после входа в Windows: install-docker-autostart.bat.
 
@@ -44,7 +45,7 @@ services:
     build:
       context: .
       args:
-        SITE_DOMAIN: ${SITE_DOMAIN:-}
+        SITE_DOMAIN: ${SITE_DOMAIN:-dinarabi.com}
         SITE_URL: ${SITE_URL:-}
         MEDIA_SITE_URL: ${MEDIA_SITE_URL:-}
         MEDIA_SITE_ENABLED: ${MEDIA_SITE_ENABLED:-}
@@ -58,6 +59,8 @@ services:
       HOST: 0.0.0.0
       PORT: "8787"
       TRUST_PROXY: private
+      # Тот же домен, что передан в сборку выше (dinarabi.com и www.dinarabi.com), иначе сервер предупредит о расхождении.
+      SITE_DOMAIN: ${SITE_DOMAIN:-dinarabi.com}
       DATABASE_URL: postgres://bazis:${POSTGRES_PASSWORD}@postgres:5432/bazis
     depends_on:
       postgres:

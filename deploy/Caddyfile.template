@@ -1,6 +1,7 @@
 # Шаблон. Не правьте домены здесь: готовый файл deploy/generated/Caddyfile создаёт команда
 #   npm run deploy:config
 # Домены берутся из SITE_DOMAIN (или SITE_URL / MEDIA_SITE_URL) в .env, порт — из PORT.
+# SITE_DOMAIN=dinarabi.com даёт адреса dinarabi.com, www.dinarabi.com (+ media.dinarabi.com, если включён медиасайт).
 #
 # Caddy проще всего на Windows: сам получает и продлевает сертификаты HTTPS и перенаправляет HTTP на HTTPS.
 # Нужны открытые порты 80 и 443 и DNS-записи (A) всех доменов ниже на этот сервер.

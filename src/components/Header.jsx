@@ -31,17 +31,17 @@ function LogoImage() {
   if (IS_MEDIA) {
     return (
       <>
-        <img className="logo-img" src="/brand/logo-media.svg" alt={t("header.logo_alt")} width="133" height="34" />
+        <img className="logo-img" src="/brand/logo-media.svg" alt={t("header.logo_alt")} width="153" height="34" />
         <span className="logo-tag" aria-hidden="true">
           {t("header.logo_tag")}
         </span>
       </>
     );
   }
-  return <img className="logo-img" src="/brand/logo.svg" alt={t("header.logo_alt")} width="133" height="34" />;
+  return <img className="logo-img" src="/brand/logo.svg" alt={t("header.logo_alt")} width="153" height="34" />;
 }
 
-/** Якоря главной: у медиа-сайта — портфолио, у «Базиса» — блок «О нас». */
+/** Якоря главной: у медиа-сайта — портфолио, у Dinara BILab — блок «О нас». */
 const HOME_FIRST_ANCHOR = IS_MEDIA ? { href: "#works", key: "works" } : { href: "#about", key: "about" };
 
 /** variant: "home" — прозрачная шапка с якорями; "shop" / "articles" — сплошная, со ссылками на разделы. */

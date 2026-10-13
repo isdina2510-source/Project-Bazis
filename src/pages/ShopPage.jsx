@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import BrandText from "../components/BrandText.jsx";
 import { CatalogUnavailable, StaleCatalogNote } from "../components/CatalogNotices.jsx";
 import ProductCard from "../components/ProductCard.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
@@ -71,7 +72,9 @@ export default function ShopPage() {
   return (
     <main>
       <section className="section shop-hero">
-        <p className="eyebrow">{t("shop.hero.eyebrow")}</p>
+        <p className="eyebrow">
+          <BrandText>{t("shop.hero.eyebrow")}</BrandText>
+        </p>
         <h1>{t("shop.hero.title")}</h1>
         <p className="shop-hero-text">{t("shop.hero.text")}</p>
       </section>

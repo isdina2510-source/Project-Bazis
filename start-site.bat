@@ -6,7 +6,7 @@ rem Данные перенесены в Docker (switch-to-docker.bat): запу
 if exist "data\DATA-MOVED.txt" goto docker
 
 echo.
-echo Запуск сайта Базис...
+echo Запуск сайта Dinara BILab...
 echo Сайт:     http://127.0.0.1:8787
 echo Медиа:    http://media.localhost:8787
 echo Админка:  http://127.0.0.1:8787/admin.html

@@ -239,9 +239,9 @@ export default function ProductModal({ product, onClose, onSaved }) {
           <label>
             Раздел
             <select name="category" required value={form.category} onChange={set("category")}>
-              <option value="management">Управление бизнесом — сайт «Базис»</option>
+              <option value="management">Управление бизнесом — сайт «Dinara BILab»</option>
               <option value="infrastructure">Инфраструктура — оба сайта</option>
-              <option value="media">Визуал и медиа — сайт «Базис Медиа»</option>
+              <option value="media">Визуал и медиа — сайт «Dinara BILab Медиа»</option>
             </select>
           </label>
 

@@ -85,7 +85,7 @@ function freePort() {
   });
 }
 
-/** Работающий сервер: { url, output(), stop() }; готов, когда в журнале появилась строка «Базис CRM:». */
+/** Работающий сервер: { url, output(), stop() }; готов, когда в журнале появилась строка «Dinara BILab CRM:». */
 async function startServer(sandbox, env = {}, timeoutMs = 20000) {
   const port = await freePort();
   const fullEnv = sandboxEnv(await databaseEnv(sandbox, { PORT: String(port), ...env }));
@@ -96,7 +96,7 @@ async function startServer(sandbox, env = {}, timeoutMs = 20000) {
     const timer = setTimeout(() => reject(new Error("сервер не запустился:\n" + output)), timeoutMs);
     const onData = (chunk) => {
       output += chunk;
-      if (output.includes("Базис CRM:")) {
+      if (output.includes("Dinara BILab CRM:")) {
         clearTimeout(timer);
         resolve();
       }

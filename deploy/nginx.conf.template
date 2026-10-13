@@ -1,12 +1,13 @@
 # Шаблон. Не правьте домены здесь: готовый файл deploy/generated/nginx.conf создаёт команда
 #   npm run deploy:config
 # Домены берутся из SITE_DOMAIN (или SITE_URL / MEDIA_SITE_URL) в .env, порт — из PORT.
+# SITE_DOMAIN=dinarabi.com даёт server_name dinarabi.com www.dinarabi.com (+ media.dinarabi.com, если включён медиасайт).
 #
 # nginx перед server.js: HTTPS, редирект с HTTP и передача адреса посетителя.
 # Сертификаты Let's Encrypt (один на все домены):
 #   sudo certbot certonly --webroot -w /var/www/certbot --cert-name {{CERT_NAME}} {{CERTBOT_DOMAINS}}
 
-upstream bazis_node {
+upstream dinarabi_node {
   server 127.0.0.1:{{PORT}};
   keepalive 16;
 }
@@ -47,7 +48,7 @@ server {
   client_max_body_size 13m;
 
   location / {
-    proxy_pass http://bazis_node;
+    proxy_pass http://dinarabi_node;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;

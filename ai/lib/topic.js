@@ -150,7 +150,7 @@ function offTopicReplyText({ message, attachments, offTopicFiles, questionOff, c
     ? describeFiles(files, attachments) +
       ((questionOff == null ? String(message || "").trim() : questionOff) ? ", как и сам вопрос" : "") +
       ", поэтому разобрать " + (files.length > 1 ? "их" : "его") + " не смогу."
-    : "Спасибо за сообщение! Этот вопрос не относится к услугам ИП «Базис», поэтому подсказать по нему не смогу.";
+    : "Спасибо за сообщение! Этот вопрос не относится к услугам Dinara BILab, поэтому подсказать по нему не смогу.";
   const sections = sectionsFromCatalog(catalog)
     .map((s) => s.charAt(0).toLowerCase() + s.slice(1))
     .join(", ");

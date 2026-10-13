@@ -106,6 +106,10 @@ picture {
   flex-shrink: 0;
 }
 
+.brand-name {
+  text-transform: none;
+}
+
 .logo-img {
   display: block;
   width: auto;

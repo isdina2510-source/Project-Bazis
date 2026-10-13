@@ -91,11 +91,11 @@ test("HIGH-09: медиасайт выключен (MEDIA_SITE_ENABLED не за
     const off = await runServer(content, ["--check-config", "--production"], { SITE_DOMAIN: "example.kz" });
     assert.doesNotMatch(off.stderr, /portfolio\.js/);
     assert.match(off.stdout, /^Медиасайт: выключен$/m);
-    assert.doesNotMatch(off.stdout, /Базис Медиа/);
+    assert.doesNotMatch(off.stdout, /Dinara BILab Медиа/);
     const on = await runServer(content, ["--check-config", "--production"], { SITE_DOMAIN: "example.kz", MEDIA_SITE_ENABLED: "true" });
     assert.match(on.stderr, /portfolio\.js/);
     assert.match(on.stdout, /^Медиасайт: включён$/m);
-    assert.match(on.stdout, /Сайт «Базис Медиа»: https:\/\/media\.example\.kz/);
+    assert.match(on.stdout, /Сайт «Dinara BILab Медиа»: https:\/\/media\.example\.kz/);
   } finally {
     content.cleanup();
   }

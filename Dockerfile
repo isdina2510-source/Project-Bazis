@@ -1,4 +1,4 @@
-# Сайт «Базис» + CRM в Docker. Запуск: docker compose up -d --build (настройки — в .env, см. docker-compose.yml).
+# Сайт Dinara BILab + CRM в Docker. Запуск: docker compose up -d --build (настройки — в .env, см. docker-compose.yml).
 # База — PostgreSQL (сервис postgres в docker-compose.yml). Node 22.13+ нужен для разового переноса из старой базы
 # SQLite (встроенный node:sqlite); тесты при сборке идут на PGlite (PostgreSQL в WebAssembly) без отдельного сервера.
 

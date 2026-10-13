@@ -1,6 +1,6 @@
 /**
  * Сервер сайта + CRM API (orders/clients/products JSON) + ИИ-ядро (папка ai/).
- * Фронтенд (React) собирается командой `npm run build`: «Базис» — в dist/, «Базис Медиа» — в dist-media/.
+ * Фронтенд (React) собирается командой `npm run build`: «Dinara BILab» — в dist/, «Dinara BILab Медиа» — в dist-media/.
  * Запуск: npm start  |  start-site.bat
  * Сайт: http://127.0.0.1:8787, медиа-сайт: http://media.localhost:8787 (домены — shared/sites.json)
  * Ключ OpenAI: только в .env (OPENAI_API_KEY) — не в браузере.
@@ -98,7 +98,7 @@ const ADMIN_PASSWORD = adminPasswordCheck.password;
 const TRUST_PROXY = trustProxyCheck.trust;
 
 /**
- * Сайты на одном сервере: «Базис» и «Базис Медиа». Какой отдать — по домену из запроса (Host);
+ * Сайты на одном сервере: «Dinara BILab» и «Dinara BILab Медиа». Какой отдать — по домену из запроса (Host);
  * домены — hosts в shared/sites.json плюс адрес из SITE_DOMAIN / SITE_URL / MEDIA_SITE_URL (config/sites.js).
  */
 const SITES = sitesCheck.sites.map((resolved) => {
@@ -734,7 +734,7 @@ function sendDisabledSite(req, res, url, site) {
     `<title>${escapeHtml(site.label)} — сайт не работает</title></head>` +
     '<body style="font-family:system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;line-height:1.5">' +
     `<h1>Сайт «${escapeHtml(site.label)}» сейчас не работает</h1>` +
-    `<p>Все услуги ИП «Базис» — на основном сайте: <a href="${escapeHtml(mainUrl)}/">${escapeHtml(main.label)}</a>.</p>` +
+    `<p>Все услуги Dinara BILab — на основном сайте: <a href="${escapeHtml(mainUrl)}/">${escapeHtml(main.label)}</a>.</p>` +
     "</body></html>";
   res.writeHead(404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
   res.end(req.method === "HEAD" ? undefined : html);
@@ -2091,7 +2091,7 @@ server.listen(PORT, HOST, async () => {
     );
     return;
   }
-  console.log(`Базис CRM: http://127.0.0.1:${PORT}`);
+  console.log(`Dinara BILab CRM: http://127.0.0.1:${PORT}`);
   SITES.forEach((site) => {
     const local = `http://${[...site.hosts][0]}:${PORT}`;
     console.log(`Сайт «${site.label}»: ${local}` + (site.url ? `, в интернете — ${site.url}` : ""));

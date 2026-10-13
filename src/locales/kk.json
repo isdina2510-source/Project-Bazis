@@ -1,6 +1,6 @@
 {
   "common": {
-    "brand": "TODO(kk): Базис",
+    "brand": "TODO(kk): Dinara BILab",
     "close": "TODO(kk): Закрыть"
   },
   "errors": {
@@ -16,27 +16,27 @@
   },
   "meta": {
     "home": {
-      "title": "TODO(kk): Базис — порядок в бизнесе",
-      "description": "TODO(kk): Базис — консалтинг для владельцев бизнеса. Порядок в процессах, выход из микроменеджмента без потери контроля.",
+      "title": "TODO(kk): Dinara BILab — порядок в бизнесе",
+      "description": "TODO(kk): Dinara BILab — консалтинг для владельцев бизнеса. Порядок в процессах, выход из микроменеджмента без потери контроля.",
       "og_description": "TODO(kk): Консалтинг для владельцев бизнеса: порядок в процессах и выход из микроменеджмента без потери контроля.",
       "twitter_description": "TODO(kk): Консалтинг для владельцев бизнеса: порядок в процессах и выход из микроменеджмента."
     },
     "shop": {
-      "title": "TODO(kk): Услуги — Базис",
-      "description": "TODO(kk): Услуги Базис — управление бизнесом и инфраструктура: аудит, процессы, регламенты, менторство владельца и создание сайта.",
+      "title": "TODO(kk): Услуги — Dinara BILab",
+      "description": "TODO(kk): Услуги Dinara BILab — управление бизнесом и инфраструктура: аудит, процессы, регламенты, менторство владельца и создание сайта.",
       "og_description": "TODO(kk): Управление бизнесом и инфраструктура: аудит, процессы, регламенты, менторство владельца и сайт.",
-      "twitter_description": "TODO(kk): Управление бизнесом и инфраструктура от Базис."
+      "twitter_description": "TODO(kk): Управление бизнесом и инфраструктура от Dinara BILab."
     },
     "articles": {
-      "title": "TODO(kk): Полезные статьи — Базис",
+      "title": "TODO(kk): Полезные статьи — Dinara BILab",
       "description": "TODO(kk): Полезные статьи и короткие тесты для владельцев бизнеса: процессы, регламенты, выход из микроменеджмента и сайт.",
       "og_description": "TODO(kk): Статьи и тесты для владельцев бизнеса: процессы, команда и сайт — без воды.",
-      "twitter_description": "TODO(kk): Статьи и тесты для владельцев бизнеса от Базис."
+      "twitter_description": "TODO(kk): Статьи и тесты для владельцев бизнеса от Dinara BILab."
     }
   },
   "header": {
     "nav_label": "TODO(kk): Навигация",
-    "logo_alt": "TODO(kk): Базис",
+    "logo_alt": "TODO(kk): Dinara BILab",
     "logo_tag": "TODO(kk): Медиа",
     "cart": "TODO(kk): Корзина",
     "menu": {
@@ -49,15 +49,15 @@
     }
   },
   "footer": {
-    "copyright": "TODO(kk): © {year} Базис. Консалтинг для владельцев бизнеса.",
+    "copyright": "TODO(kk): © {year} Dinara BILab. Консалтинг для владельцев бизнеса.",
     "home": "TODO(kk): На главную",
     "shop": "TODO(kk): Услуги",
     "articles": "TODO(kk): Полезные статьи",
     "top": "TODO(kk): Наверх",
-    "sibling": "TODO(kk): Видео и визуал — Базис Медиа"
+    "sibling": "TODO(kk): Видео и визуал — Dinara BILab Медиа"
   },
   "articles": {
-    "eyebrow": "TODO(kk): Блог Базис",
+    "eyebrow": "TODO(kk): Блог Dinara BILab",
     "title": "TODO(kk): Полезные статьи",
     "lead": "TODO(kk): Практичные статьи и короткие тесты для владельцев бизнеса: процессы, команда, сайт и контент — без воды.",
     "filter_label": "TODO(kk): Тип публикаций",
@@ -84,7 +84,7 @@
   },
   "home": {
     "hero": {
-      "brand_line": "TODO(kk): ИП Базис",
+      "brand_line": "TODO(kk): Dinara BILab",
       "title_line1": "TODO(kk): Порядок в бизнесе.",
       "title_line2": "TODO(kk): Свобода для владельца.",
       "lead": "TODO(kk): Помогаю навести системный порядок в процессах, убрать хаос и выйти из операционного микроменеджмента без потери контроля.",
@@ -123,8 +123,8 @@
     "sibling": {
       "eyebrow": "TODO(kk): Отдельный сайт",
       "title": "TODO(kk): Видео и визуал",
-      "lead": "TODO(kk): Видеоролики, мультфильмы, ИИ-фото и пригласительные — на сайте Базис Медиа.",
-      "cta": "TODO(kk): Перейти в Базис Медиа"
+      "lead": "TODO(kk): Видеоролики, мультфильмы, ИИ-фото и пригласительные — на сайте Dinara BILab Медиа.",
+      "cta": "TODO(kk): Перейти в Dinara BILab Медиа"
     },
     "process": {
       "eyebrow": "TODO(kk): Процесс",
@@ -155,7 +155,7 @@
     },
     "fit": {
       "eyebrow": "TODO(kk): Аудитория",
-      "title": "TODO(kk): Кому подойдёт «Базис»",
+      "title": "TODO(kk): Кому подойдёт «Dinara BILab»",
       "companies": "TODO(kk): <strong>Небольшие и средние компании,</strong> где «всё держится на шефе».",
       "owners": "TODO(kk): <strong>Собственники,</strong> которые устали тушить пожары и хотят системного роста."
     },
@@ -170,7 +170,7 @@
   },
   "media_home": {
     "hero": {
-      "eyebrow": "TODO(kk): Базис Медиа",
+      "eyebrow": "TODO(kk): Dinara BILab Медиа",
       "title_line1": "TODO(kk): Визуал,",
       "title_line2": "TODO(kk): который запоминают.",
       "lead": "TODO(kk): Видеоролики, мультфильмы, ИИ-фотосессии, оживление фото, пригласительные и сайты — делаем под ключ, от идеи до готовых файлов.",
@@ -247,7 +247,7 @@
   },
   "shop": {
     "hero": {
-      "eyebrow": "TODO(kk): Услуги Базис",
+      "eyebrow": "TODO(kk): Услуги Dinara BILab",
       "title": "TODO(kk): Выберите формат работы",
       "text": "TODO(kk): Управление бизнесом обсуждаем в мессенджере, инфраструктуру можно сразу заказать через корзину — в WhatsApp или Telegram."
     },
@@ -337,22 +337,22 @@
     }
   },
   "message": {
-    "hello_consultation": "TODO(kk): Здравствуйте! Хочу получить консультацию на сайте ИП Базис.",
-    "hello_order": "TODO(kk): Здравствуйте! Хочу оформить заказ на сайте ИП Базис.",
+    "hello_consultation": "TODO(kk): Здравствуйте! Хочу получить консультацию на сайте Dinara BILab.",
+    "hello_order": "TODO(kk): Здравствуйте! Хочу оформить заказ на сайте Dinara BILab.",
     "package": "TODO(kk): Выбранный пакет:",
     "total": "TODO(kk): Итого: {total}",
     "next_steps": "TODO(kk): Пожалуйста, подскажите следующие шаги.",
     "name": "TODO(kk): Имя: {name}",
     "phone": "TODO(kk): Телефон: {phone}",
-    "handoff_hello": "TODO(kk): Здравствуйте! Пишу с сайта ИП Базис.",
+    "handoff_hello": "TODO(kk): Здравствуйте! Пишу с сайта Dinara BILab.",
     "handoff_want": "TODO(kk): Хочу получить консультацию.",
     "handoff_question": "TODO(kk): Мой вопрос: {text}",
     "handoff_files": "TODO(kk): Файлы к вопросу (пришлю следующим сообщением): {files}",
     "handoff_code": "TODO(kk): Номер обращения из чата на сайте: {code}",
-    "article": "TODO(kk): Здравствуйте! Прочитал(а) на сайте ИП Базис статью «{title}».",
-    "quiz": "TODO(kk): Здравствуйте! Прошёл(а) на сайте ИП Базис тест «{title}»: {score} из {max} — «{result}».",
+    "article": "TODO(kk): Здравствуйте! Прочитал(а) на сайте Dinara BILab статью «{title}».",
+    "quiz": "TODO(kk): Здравствуйте! Прошёл(а) на сайте Dinara BILab тест «{title}»: {score} из {max} — «{result}».",
     "service": "TODO(kk): Хочу обсудить услугу «{service}».",
-    "portfolio": "TODO(kk): Здравствуйте! Хочу заказать что-то похожее на работу «{title}» с сайта Базис Медиа."
+    "portfolio": "TODO(kk): Здравствуйте! Хочу заказать что-то похожее на работу «{title}» с сайта Dinara BILab Медиа."
   },
   "chat": {
     "open": "TODO(kk): Открыть ИИ-чат",

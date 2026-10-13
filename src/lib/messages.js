@@ -116,8 +116,8 @@ export function buildClientFollowupMessage(order) {
     const direction = ALL_CATEGORIES.some((item) => item.id === directionId) ? categoryText(directionId, "title", "ru") : "";
     parts.push(
       direction
-        ? "Вы оставили заявку на сайте ИП «Базис» по направлению «" + direction + "»."
-        : "Вы оставили заявку на сайте ИП «Базис»."
+        ? "Вы оставили заявку на сайте Dinara BILab по направлению «" + direction + "»."
+        : "Вы оставили заявку на сайте Dinara BILab."
     );
     const legacyComment = order.lead ? "" : (String(order.message || "").match(/^Комментарий:\s*([\s\S]*)$/m) || [])[1];
     const comment = String((order.lead ? order.lead.comment : legacyComment) || "").trim();
@@ -129,7 +129,7 @@ export function buildClientFollowupMessage(order) {
   if (items.length) {
     parts.push("Вы хотели заказать у нас:", "", ...items.map(formatCrmItemLine));
   } else {
-    parts.push("Вы хотели заказать у нас услугу на сайте ИП «Базис».");
+    parts.push("Вы хотели заказать у нас услугу на сайте Dinara BILab.");
   }
 
   const total = String(order.totalText || "").trim();

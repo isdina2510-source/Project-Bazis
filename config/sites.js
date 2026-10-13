@@ -2,8 +2,8 @@
  * Адреса и домены сайтов из shared/sites.json и .env. Общие для сервера (выбор сайта по Host),
  * сборки (canonical, ссылки между сайтами) и генератора конфигов прокси (scripts/deploy-config.mjs).
  *
- * Для публикации достаточно SITE_DOMAIN=bazis.kz: сайт без subdomain в shared/sites.json получает
- * https://bazis.kz и www.bazis.kz, сайт с "subdomain": "media" — https://media.bazis.kz.
+ * Для публикации достаточно SITE_DOMAIN=dinarabi.com: сайт без subdomain в shared/sites.json получает
+ * https://dinarabi.com и www.dinarabi.com, сайт с "subdomain": "media" — https://media.dinarabi.com.
  * Адрес отдельного сайта можно задать явно (SITE_URL, MEDIA_SITE_URL или url в shared/sites.json) — он важнее SITE_DOMAIN.
  */
 const { URL, domainToASCII } = require("url");
@@ -37,7 +37,7 @@ function toPublicHostname(raw) {
 
 /**
  * SITE_DOMAIN: { ok: true, domain } (domain "" — не задан) или { ok: false, error }.
- * Принимает и «https://www.bazis.kz/» — схема, путь и www. отбрасываются.
+ * Принимает и «https://www.dinarabi.com/» — схема, путь и www. отбрасываются.
  */
 function parseSiteDomain(raw) {
   const source = String(raw == null ? "" : raw).trim();
@@ -45,7 +45,7 @@ function parseSiteDomain(raw) {
   const bare = source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/[/?#].*$/, "");
   const fail = (why) => ({
     ok: false,
-    error: `SITE_DOMAIN=${source} — ${why}. Укажите только домен сайта, например SITE_DOMAIN=bazis.kz.`,
+    error: `SITE_DOMAIN=${source} — ${why}. Укажите только домен сайта, например SITE_DOMAIN=dinarabi.com.`,
   });
   if (/:\d*$/.test(bare)) return fail("порт указывать не нужно (сайт открывается через прокси на 443)");
   const host = toPublicHostname(bare);
@@ -53,7 +53,7 @@ function parseSiteDomain(raw) {
   return { ok: true, domain: host.replace(/^www\./, "") };
 }
 
-/** Адрес сайта (SITE_URL, url в shared/sites.json): origin вида https://bazis.kz или null, если адрес неверный. */
+/** Адрес сайта (SITE_URL, url в shared/sites.json): origin вида https://dinarabi.com или null, если адрес неверный. */
 function parseSiteUrl(raw) {
   let url;
   try {
@@ -102,7 +102,7 @@ function resolveSites(sitesConfig, env = {}) {
       if (!String(value || "").trim()) continue;
       const origin = parseSiteUrl(value);
       if (!origin) {
-        errors.push(`${from}=${value} — нужен адрес сайта без пути, например https://bazis.kz`);
+        errors.push(`${from}=${value} — нужен адрес сайта без пути, например https://dinarabi.com`);
         continue;
       }
       url = origin;

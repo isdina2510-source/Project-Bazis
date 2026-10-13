@@ -1,6 +1,6 @@
 {
   "COMPANY_FIELDS": [
-    { "key": "name", "label": "Наименование", "placeholder": "ИП «Базис»", "max": 200, "group": "main" },
+    { "key": "name", "label": "Наименование", "placeholder": "Dinara BILab", "max": 200, "group": "main" },
     { "key": "bin", "label": "ИИН / БИН", "max": 12, "pattern": "^\\d{12}$", "patternHint": "12 цифр", "group": "main" },
     { "key": "address", "label": "Юридический адрес", "max": 300, "group": "main" },
     { "key": "phone", "label": "Телефон", "max": 40, "group": "main" },

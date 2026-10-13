@@ -3,7 +3,7 @@
 #   sudo systemctl daemon-reload && sudo systemctl enable --now bazis
 # Журнал: journalctl -u bazis -f
 [Unit]
-Description=Bazis site + CRM
+Description=Dinara BILab site + CRM
 After=network.target
 
 [Service]

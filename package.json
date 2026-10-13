@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=22.13"
   },
-  "description": "Сайт ИП Базис с CRM заказов (React + Vite)",
+  "description": "Сайт Dinara BILab с CRM заказов (React + Vite)",
   "scripts": {
     "predev": "npm run images",
     "dev": "vite",

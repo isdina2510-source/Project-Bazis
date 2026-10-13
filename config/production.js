@@ -24,7 +24,7 @@ function integrationProblems(env) {
 
 /**
  * Заглушки в исходниках сайта; null — файла нет (в Docker-образе папки src нет, проверка — на компьютере со сборкой).
- * Портфолио показывает только «Базис Медиа»: пока у медиасайта нет адреса в интернете, стоковые фото никто не видит.
+ * Портфолио показывает только «Dinara BILab Медиа»: пока у медиасайта нет адреса в интернете, стоковые фото никто не видит.
  * @param {{ portfolio: string | null, catalog: string | null, mediaPublished?: boolean }} sources тексты
  *   src/content/portfolio.js и src/lib/catalog.js; mediaPublished — медиасайт включён (MEDIA_SITE_ENABLED=true)
  */
@@ -32,7 +32,7 @@ function contentProblems({ portfolio, catalog, mediaPublished = false }) {
   const problems = [];
   if (mediaPublished && portfolio != null && portfolio.includes("images.unsplash.com")) {
     problems.push(
-      "В портфолио «Базис Медиа» стоковые фото images.unsplash.com (src/content/portfolio.js) — замените реальными работами или скройте блок."
+      "В портфолио «Dinara BILab Медиа» стоковые фото images.unsplash.com (src/content/portfolio.js) — замените реальными работами или скройте блок."
     );
   }
   if (catalog != null) {

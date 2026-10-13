@@ -160,7 +160,7 @@ function brandHeader(data) {
   const contacts = [company.address, company.phone, company.email].filter((v) => v && String(v).trim());
   return {
     columns: [
-      data.logo ? { image: data.logo, width: 120 } : { text: dash(company.name), style: "brandName", width: 200 },
+      data.logo ? { image: data.logo, width: 136 } : { text: dash(company.name), style: "brandName", width: 200 },
       {
         width: "*",
         alignment: "right",
@@ -194,7 +194,7 @@ function baseDoc(opts) {
     pageSize: "A4",
     pageOrientation: opts.landscape ? "landscape" : "portrait",
     pageMargins: margins,
-    info: { title: opts.title, creator: "Базис CRM", producer: "Базис CRM" },
+    info: { title: opts.title, creator: "Dinara BILab CRM", producer: "Dinara BILab CRM" },
     defaultStyle: { font: "Inter", fontSize: 9, lineHeight: 1.18, color: COLORS.ink },
     styles: {
       brandName: { fontSize: 18, bold: true, color: COLORS.brand },

@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import ArticleCard from "../components/ArticleCard.jsx";
+import BrandText from "../components/BrandText.jsx";
 import { sortedArticles } from "../content/articles.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 
@@ -17,7 +18,9 @@ export default function ArticlesPage() {
   return (
     <main>
       <section className="section shop-hero articles-hero">
-        <p className="eyebrow">{t("articles.eyebrow")}</p>
+        <p className="eyebrow">
+          <BrandText>{t("articles.eyebrow")}</BrandText>
+        </p>
         <h1>{t("articles.title")}</h1>
         <p className="shop-hero-text">{t("articles.lead")}</p>
       </section>
