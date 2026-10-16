@@ -52,7 +52,8 @@ async function postOrder(body) {
   });
 }
 
-const cartOrder = (items) => postOrder({ channel: "whatsapp", customerName: "Айгерим", customerPhone: "+7 701 123 45 67", items });
+const cartOrder = (items) =>
+  postOrder({ channel: "whatsapp", customerName: "Айгерим", customerPhone: "+7 701 123 45 67", consent: true, items });
 
 test("LOW-02: неизвестная валюта или раздел — 400 invalid_currency / invalid_category, а не KZT / «management»", async () => {
   for (const [body, error] of [
