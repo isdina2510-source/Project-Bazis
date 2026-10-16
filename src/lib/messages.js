@@ -1,6 +1,6 @@
 import { getLang, t } from "../i18n/index.js";
 import { ALL_CATEGORIES, CONTACT_PHONE, categoryText, formatPrice, normalizeCurrency, productText } from "./catalog.js";
-import { isValidPhone, normalizePhone } from "./phone.js";
+import { isValidCustomerName, isValidPhone, normalizePhone } from "./phone.js";
 
 export function totalsText(items) {
   const totals = {};
@@ -90,8 +90,7 @@ export function buildArticleMessage({ title, quiz, product }, lang = getLang()) 
 }
 
 export function isCheckoutCustomerValid(customer) {
-  const nameOk = String((customer && customer.name) || "").trim().length >= 2;
-  return nameOk && isValidPhone(customer && customer.phone);
+  return isValidCustomerName(customer && customer.name) && isValidPhone(customer && customer.phone);
 }
 
 // i18n-ignore-start: сообщения CRM для админки (только ru)

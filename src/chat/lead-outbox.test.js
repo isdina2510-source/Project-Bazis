@@ -30,7 +30,14 @@ describe("MED-13: заявка из ИИ-чата не теряется", () => 
     vi.spyOn(console, "warn").mockImplementation(() => {});
     submitPublicOrder.mockReset().mockRejectedValue(apiError("network"));
     const session = createChatLeadSession();
-    const sending = sendChatLead(session, { history: HISTORY, channel: "whatsapp", direction: "infrastructure" });
+    const sending = sendChatLead(session, {
+      history: HISTORY,
+      channel: "whatsapp",
+      direction: "infrastructure",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: true,
+    });
     await vi.advanceTimersByTimeAsync(6000);
     await sending;
     vi.useRealTimers();
@@ -52,14 +59,44 @@ describe("MED-13: заявка из ИИ-чата не теряется", () => 
   test("страницу закрыли до ответа сервера — заявка уже лежит в localStorage", () => {
     submitPublicOrder.mockReset().mockReturnValue(new Promise(() => {}));
     const session = createChatLeadSession();
-    sendChatLead(session, { history: HISTORY, channel: "telegram" });
+    sendChatLead(session, {
+      history: HISTORY,
+      channel: "telegram",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: true,
+    });
     expect(outbox()[session.id].body.handoff).toBe("telegram");
+    expect(outbox()[session.id].body.consent).toBe(true);
+  });
+
+  test("без имени, телефона или согласия заявка не отправляется", () => {
+    submitPublicOrder.mockReset();
+    const session = createChatLeadSession();
+    sendChatLead(session, { history: HISTORY, channel: "whatsapp", customerName: "", customerPhone: "", consent: true });
+    sendChatLead(session, { history: HISTORY, channel: "whatsapp", customerName: "А", customerPhone: "+7 701 123 45 67", consent: true });
+    sendChatLead(session, { history: HISTORY, channel: "whatsapp", customerName: "Айгерим", customerPhone: "123", consent: true });
+    sendChatLead(session, {
+      history: HISTORY,
+      channel: "whatsapp",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: false,
+    });
+    expect(submitPublicOrder).not.toHaveBeenCalled();
+    expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
   });
 
   test("успешная отправка — в localStorage ничего не остаётся", async () => {
     submitPublicOrder.mockReset().mockResolvedValue({ id: "x" });
     const session = createChatLeadSession();
-    await sendChatLead(session, { history: HISTORY, channel: "whatsapp" });
+    await sendChatLead(session, {
+      history: HISTORY,
+      channel: "whatsapp",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: true,
+    });
     expect(session.sent).toBe(true);
     expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
   });

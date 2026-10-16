@@ -120,7 +120,7 @@ function OrderCard({ order, onReload, onOpenCompany }) {
             <p className="crm-card-phone">{formatPhoneDisplay(order.customerPhone)}</p>
           ) : (
             <p className="crm-muted">
-              {fromChat ? "Телефон придёт в мессенджере — впишите его в карточку клиента" : "Телефон не указан"}
+              {fromChat ? "Телефон не указан — уточните у клиента и впишите в карточку" : "Телефон не указан"}
             </p>
           )}
           {fromChat && order.chatCode ? <p className="crm-muted">Обращение № {order.chatCode}</p> : null}
@@ -162,6 +162,11 @@ function OrderCard({ order, onReload, onOpenCompany }) {
         </details>
       ) : null}
       {isLead && order.sourcePage ? <p className="crm-muted">Страница: {order.sourcePage}</p> : null}
+      <p className={"crm-consent" + (order.consentAt ? " is-given" : "")}>
+        {order.consentAt
+          ? "✓ Согласие на обработку персональных данных: " + formatDate(order.consentAt)
+          : "Согласие на обработку персональных данных не зафиксировано"}
+      </p>
       {!isLead && Array.isArray(order.totals) ? <OrderTotalsBreakdown totals={order.totals} /> : null}
       <footer className="crm-card-foot">
         <p className="crm-order-total">{isLead ? order.totalText || "—" : orderTotalLabel(order)}</p>

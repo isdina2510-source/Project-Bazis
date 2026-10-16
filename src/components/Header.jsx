@@ -1,6 +1,7 @@
+import { useLayoutEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n/I18nProvider.jsx";
-import { IS_MEDIA } from "../site.js";
+import { IS_MEDIA, SIBLING_ID, siteUrl } from "../site.js";
 import { useStore } from "../store/StoreContext.jsx";
 import AnchorLink from "./AnchorLink.jsx";
 import LanguageSwitcher from "./LanguageSwitcher.jsx";
@@ -41,34 +42,85 @@ function LogoImage() {
   return <img className="logo-img" src="/brand/logo.svg" alt={t("header.logo_alt")} width="153" height="34" />;
 }
 
+const MAX_COMPACT = 3;
+
+/**
+ * Ширина подписей зависит от сайта, языка и масштаба страницы, поэтому одной ширины для @media мало:
+ * шапка сама проверяет, помещаются ли кнопки, и ужимает их по ступеням (data-compact в styles.css):
+ * 1 — прячет «Как работаем», 2 — ссылка на соседний сайт становится стрелкой, 3 — остаются только иконки.
+ */
+function useCompactTopbar(ref, deps) {
+  useLayoutEffect(() => {
+    const header = ref.current;
+    const end = header?.querySelector(".topbar-end");
+    if (!end) return undefined;
+
+    const fit = () => {
+      for (let level = 0; level <= MAX_COMPACT; level++) {
+        if (level) header.dataset.compact = String(level);
+        else delete header.dataset.compact;
+        // scrollWidth и clientWidth округляются до целых — 1px переполнения глазом не виден
+        if (end.scrollWidth - end.clientWidth <= 1) return;
+      }
+    };
+
+    fit();
+    let cancelled = false;
+    document.fonts?.ready.then(() => !cancelled && fit());
+    if (typeof ResizeObserver === "undefined") return () => (cancelled = true);
+    let width = header.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (header.clientWidth === width) return;
+      width = header.clientWidth;
+      fit();
+    });
+    observer.observe(header);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, deps);
+}
+
 /** Якоря главной: у медиа-сайта — портфолио, у Dinara BILab — блок «О нас». */
 const HOME_FIRST_ANCHOR = IS_MEDIA ? { href: "#works", key: "works" } : { href: "#about", key: "about" };
 
 /** variant: "home" — прозрачная шапка с якорями; "shop" / "articles" — сплошная, со ссылками на разделы. */
 export default function Header({ variant, solid }) {
   const { cartCount, openCart, openContact } = useStore();
-  const { t, to } = useI18n();
+  const { lang, t, to } = useI18n();
   const isShop = variant !== "home";
+  const mainSiteUrl = IS_MEDIA && SIBLING_ID ? siteUrl(SIBLING_ID) : "";
   const current = (page) => (variant === page ? "page" : undefined);
+  const headerRef = useRef(null);
+  useCompactTopbar(headerRef, [lang, variant, mainSiteUrl]);
 
   const className = ["topbar", solid || isShop ? "is-solid" : "", isShop ? "shop-topbar" : ""]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <header className={className} id="topbar">
+    <header className={className} id="topbar" ref={headerRef}>
       {isShop ? (
-        <Link className="logo" to={to("/")}>
+        <Link className="logo" to={to("/")} aria-label={t("header.logo_alt")}>
           <LogoImage />
         </Link>
       ) : (
-        <AnchorLink className="logo" href="#top">
+        <AnchorLink className="logo" href="#top" aria-label={t("header.logo_alt")}>
           <LogoImage />
         </AnchorLink>
       )}
       <div className="topbar-end">
         <LanguageSwitcher />
         <nav aria-label={t("header.nav_label")}>
+          {mainSiteUrl && (
+            <a className="nav-cta nav-sibling" href={mainSiteUrl + "/" + lang + "/"} aria-label={t("header.sibling_label")}>
+              <span className="nav-sibling-text">{t("header.sibling")}</span>
+              <span className="nav-sibling-icon" aria-hidden="true">
+                ←
+              </span>
+            </a>
+          )}
           {isShop ? (
             <>
               <Link className="nav-cta" to={to("/")}>

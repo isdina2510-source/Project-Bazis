@@ -24,6 +24,8 @@
   },
   "header": {
     "logo_alt": "Dinara BILab Медиа",
+    "sibling": "← Dinara BILab",
+    "sibling_label": "Вернуться на основной сайт Dinara BILab",
     "menu": {
       "process": "Как работаем"
     }

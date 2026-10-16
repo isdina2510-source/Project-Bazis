@@ -3,13 +3,17 @@ import { CONTACT_PHONE, getTelegramProfileUrl } from "../lib/catalog.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 import { reportClientError } from "../lib/client-errors.js";
 import { buildHandoffMessage, whatsappUrl } from "../lib/messages.js";
+import { isValidCustomerName, isValidPhone, maskPhone } from "../lib/phone.js";
 import { useStore } from "../store/StoreContext.jsx";
+import ConsentField from "../components/ConsentField.jsx";
 import { MAX_ATTACHMENTS, formatBytes, prepareAttachment } from "./attachments.js";
 import ChatQuick from "./ChatQuick.jsx";
 import ChatText from "./ChatText.jsx";
 import { consultCloud } from "./cloud.js";
 import { createChatLeadSession, hasClientMessages, sendChatLead } from "./handoff-lead.js";
+import { findPhone } from "./handoff-transcript.js";
 import { warmOrderProof } from "../lib/order-proof.js";
+import { useMediaQuery } from "./useMediaQuery.js";
 import { useResizable } from "./useResizable.js";
 import {
   consultOffline,
@@ -17,6 +21,8 @@ import {
   isBackQuery,
   normalize,
 } from "./consult.js";
+
+const MOBILE_QUERY = "(max-width: 640px)";
 
 const HEIGHT_KEY = "bazis_chat_height";
 const SECTIONS_KEY = "bazis_chat_sections_height";
@@ -46,8 +52,8 @@ function buildFilesContext(files) {
 const maxHeight = () => Math.max(MIN_H, Math.floor(window.innerHeight * 0.92));
 const initialHeight = () => Math.min(620, maxHeight());
 const WHEEL_FACTOR = 0.45;
-/** Шапка, ползунок высоты, поле ввода, кнопки мессенджеров и минимум переписки — разделам остаётся остальное. */
-const PANEL_CHROME_PX = 430;
+/** Шапка, ползунок высоты, поле ввода, контакты, кнопки мессенджеров и минимум переписки — разделам остаётся остальное. */
+const PANEL_CHROME_PX = 560;
 const SECTIONS_MIN = 90;
 const SECTIONS_INITIAL = 240;
 const COMPOSE_MIN = 44;
@@ -78,6 +84,7 @@ function BubbleFiles({ files }) {
 export default function ChatWidget() {
   const { products, chatOpen: open, setChatOpen } = useStore();
   const { lang, t } = useI18n();
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const [history, setHistory] = useState([]);
   const [typing, setTyping] = useState(false);
@@ -90,6 +97,11 @@ export default function ChatWidget() {
   const [handoff, setHandoff] = useState(false);
   const [handoffChannel, setHandoffChannel] = useState("whatsapp");
   const [readingFiles, setReadingFiles] = useState(0);
+  const [leadName, setLeadName] = useState("");
+  const [leadPhone, setLeadPhone] = useState("");
+  const [leadConsent, setLeadConsent] = useState(false);
+  const [leadContactError, setLeadContactError] = useState("");
+  const leadPhonePrefillRef = useRef("");
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
@@ -137,19 +149,55 @@ export default function ChatWidget() {
 
   // Приветствие при первом открытии + фокус в поле ввода.
   const greetedRef = useRef(false);
+  const mobileCollapsedRef = useRef(false);
   useEffect(() => {
     if (!open) return;
     if (!greetedRef.current) {
       greetedRef.current = true;
       push("bot", t("chat.greeting"));
     }
-    inputRef.current?.focus();
-  }, [open, push, t]);
+    // На телефоне сразу больше места под переписку — разделы сворачиваем один раз за сессию.
+    if (isMobile && !mobileCollapsedRef.current) {
+      mobileCollapsedRef.current = true;
+      resizersRef.current.sections.setSize(0);
+    }
+    if (!isMobile) inputRef.current?.focus();
+  }, [open, push, t, isMobile]);
 
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [history, typing, open]);
+
+  // Блокируем прокрутку страницы под полноэкранным чатом.
+  useEffect(() => {
+    if (!open || !isMobile) return undefined;
+    document.body.classList.add("chat-mobile-open");
+    return () => document.body.classList.remove("chat-mobile-open");
+  }, [open, isMobile]);
+
+  // Высота под клавиатуру iOS/Android (visualViewport).
+  useEffect(() => {
+    if (!open || !isMobile) return undefined;
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    const sync = () => {
+      const h = vv ? Math.round(vv.height) : window.innerHeight;
+      root.style.setProperty("--chat-vv-height", h + "px");
+      if (vv) root.style.setProperty("--chat-vv-offset", Math.max(0, Math.round(vv.offsetTop)) + "px");
+    };
+    sync();
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      root.style.removeProperty("--chat-vv-height");
+      root.style.removeProperty("--chat-vv-offset");
+    };
+  }, [open, isMobile]);
 
   useEffect(() => {
     const onResize = () => resizersRef.current.panel.resizeBy(0);
@@ -306,18 +354,51 @@ export default function ChatWidget() {
   useEffect(() => {
     if (open && hasDialog && !leadRef.current.sent) warmOrderProof().catch(() => {});
   }, [open, hasDialog]);
+  useEffect(() => {
+    const found = findPhone(history);
+    if (!found || found === leadPhonePrefillRef.current) return;
+    leadPhonePrefillRef.current = found;
+    setLeadPhone((prev) => (prev.trim() ? prev : maskPhone(found)));
+  }, [history]);
   const leadCode = hasDialog ? leadRef.current.code : "";
   const waHref = whatsappUrl(buildHandoffMessage(lastUserText, lastFileNames, lang, leadCode), CONTACT_PHONE);
-  /** Не мешает переходу по ссылке: заявка уходит в фоне (keepalive). */
-  const recordHandoff = (channel) => () => {
+  /** Не мешает переходу по ссылке: заявка уходит в фоне (keepalive). Без имени и телефона переход блокируем. */
+  const recordHandoff = (channel) => (event) => {
+    const name = leadName.trim();
+    if (!isValidCustomerName(name)) {
+      event.preventDefault();
+      setLeadContactError(t("chat.contact.error_name"));
+      return;
+    }
+    if (!isValidPhone(leadPhone)) {
+      event.preventDefault();
+      setLeadContactError(t("chat.contact.error_phone"));
+      return;
+    }
+    if (!leadConsent) {
+      event.preventDefault();
+      setLeadContactError(t("contact.form.error_consent"));
+      return;
+    }
+    setLeadContactError("");
     setHandoffChannel(channel);
-    sendChatLead(leadRef.current, { history: historyRef.current, channel, direction: quickSection });
+    sendChatLead(leadRef.current, {
+      history: historyRef.current,
+      channel,
+      direction: quickSection,
+      customerName: name,
+      customerPhone: leadPhone,
+      consent: true,
+    });
   };
+
+  const panelStyle = isMobile ? undefined : { height: panel.size + "px", maxHeight: panel.size + "px" };
+  const quickStyle = isMobile ? undefined : { height: sections.size + "px" };
 
   return (
     <div
       ref={rootRef}
-      className={"chat-widget" + (open ? " is-open" : "")}
+      className={"chat-widget" + (open ? " is-open" : "") + (isMobile ? " is-mobile" : "")}
       data-lenis-prevent=""
       data-lenis-prevent-wheel=""
       data-lenis-prevent-touch=""
@@ -343,19 +424,16 @@ export default function ChatWidget() {
         </span>
       </button>
 
-      <div
-        ref={panelRef}
-        className="chat-panel chat-panel-ai"
-        hidden={!open}
-        style={{ height: panel.size + "px", maxHeight: panel.size + "px" }}
-      >
-        <div
-          className="chat-resize"
-          data-resize="panel"
-          title={t("chat.resize_title")}
-          aria-label={t("chat.resize_label")}
-          {...panel.handleProps}
-        />
+      <div ref={panelRef} className="chat-panel chat-panel-ai" hidden={!open} style={panelStyle}>
+        {!isMobile && (
+          <div
+            className="chat-resize"
+            data-resize="panel"
+            title={t("chat.resize_title")}
+            aria-label={t("chat.resize_label")}
+            {...panel.handleProps}
+          />
+        )}
         <div className="chat-panel-head">
           <div>
             <strong>{t("chat.title")}</strong>
@@ -365,23 +443,25 @@ export default function ChatWidget() {
             ×
           </button>
         </div>
-        <div className="chat-height-bar">
-          <label className="chat-height-label" htmlFor="chat-height-range">
-            {t("chat.height")}
-          </label>
-          <input
-            type="range"
-            id="chat-height-range"
-            className="chat-height-range"
-            min={MIN_H}
-            max={open ? maxHeight() : 900}
-            step="10"
-            value={panel.size}
-            onChange={(event) => panel.setSize(Number(event.target.value) || MIN_H)}
-            aria-label={t("chat.height_label")}
-          />
-          <span className="chat-height-value">{panel.size}px</span>
-        </div>
+        {!isMobile && (
+          <div className="chat-height-bar">
+            <label className="chat-height-label" htmlFor="chat-height-range">
+              {t("chat.height")}
+            </label>
+            <input
+              type="range"
+              id="chat-height-range"
+              className="chat-height-range"
+              min={MIN_H}
+              max={open ? maxHeight() : 900}
+              step="10"
+              value={panel.size}
+              onChange={(event) => panel.setSize(Number(event.target.value) || MIN_H)}
+              aria-label={t("chat.height_label")}
+            />
+            <span className="chat-height-value">{panel.size}px</span>
+          </div>
+        )}
 
         <div className="chat-messages" ref={messagesRef}>
           {history.map((m) => (
@@ -397,25 +477,36 @@ export default function ChatWidget() {
           {typing && <div className="chat-bubble chat-bubble-bot chat-typing">{t("chat.typing")}</div>}
         </div>
 
-        <div
-          className={
-            "chat-split chat-split-sections" +
-            (sections.collapsed ? " is-collapsed" : "") +
-            (sections.dragging ? " is-dragging" : "")
-          }
-          data-resize="sections"
-          title={sections.collapsed ? t("chat.sections_show") : t("chat.sections_drag")}
-          aria-label={t("chat.sections_size")}
-          aria-expanded={!sections.collapsed}
-          {...sections.handleProps}
-        >
-          <span className="chat-split-grip" aria-hidden="true" />
-          {sections.collapsed && <span className="chat-split-label">{t("chat.sections_collapsed")}</span>}
-        </div>
+        {isMobile ? (
+          <button
+            type="button"
+            className={"chat-sections-toggle" + (sections.collapsed ? " is-collapsed" : "")}
+            aria-expanded={!sections.collapsed}
+            onClick={() => sections.toggle()}
+          >
+            {sections.collapsed ? t("chat.sections_show") : t("chat.sections_hide")}
+          </button>
+        ) : (
+          <div
+            className={
+              "chat-split chat-split-sections" +
+              (sections.collapsed ? " is-collapsed" : "") +
+              (sections.dragging ? " is-dragging" : "")
+            }
+            data-resize="sections"
+            title={sections.collapsed ? t("chat.sections_show") : t("chat.sections_drag")}
+            aria-label={t("chat.sections_size")}
+            aria-expanded={!sections.collapsed}
+            {...sections.handleProps}
+          >
+            <span className="chat-split-grip" aria-hidden="true" />
+            {sections.collapsed && <span className="chat-split-label">{t("chat.sections_collapsed")}</span>}
+          </div>
+        )}
 
         {!sections.collapsed && (
           <ChatQuick
-            style={{ height: sections.size + "px" }}
+            style={quickStyle}
             products={products}
             sectionId={quickSection}
             afterConsult={afterConsult}
@@ -428,15 +519,17 @@ export default function ChatWidget() {
           />
         )}
 
-        <div
-          className={"chat-split chat-split-compose" + (compose.dragging ? " is-dragging" : "")}
-          data-resize="compose"
-          title={t("chat.compose_drag")}
-          aria-label={t("chat.compose_size")}
-          {...compose.handleProps}
-        >
-          <span className="chat-split-grip" aria-hidden="true" />
-        </div>
+        {!isMobile && (
+          <div
+            className={"chat-split chat-split-compose" + (compose.dragging ? " is-dragging" : "")}
+            data-resize="compose"
+            title={t("chat.compose_drag")}
+            aria-label={t("chat.compose_size")}
+            {...compose.handleProps}
+          >
+            <span className="chat-split-grip" aria-hidden="true" />
+          </div>
+        )}
 
         <div className="chat-attach-preview" hidden={!pendingFiles.length && !readingFiles}>
           {pendingFiles.map((f, i) => (
@@ -479,7 +572,14 @@ export default function ChatWidget() {
             title={t("chat.attach_title")}
             onClick={() => fileRef.current?.click()}
           >
-            +
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
           <input
             ref={fileRef}
@@ -494,6 +594,7 @@ export default function ChatWidget() {
             rows={1}
             placeholder={t("chat.placeholder")}
             autoComplete="off"
+            enterKeyHint="send"
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {
@@ -504,11 +605,67 @@ export default function ChatWidget() {
             }}
           />
           <button type="submit" className="chat-send" aria-label={t("chat.send")} disabled={readingFiles > 0}>
-            ➤
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5 12h12M13 6l6 6-6 6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </form>
 
         <div className="chat-actions">
+          <div className="chat-contact-fields">
+            <label className="chat-contact-field">
+              <span>{t("chat.contact.name")} *</span>
+              <input
+                type="text"
+                name="chat-lead-name"
+                autoComplete="name"
+                maxLength={120}
+                required
+                placeholder={t("chat.contact.name_placeholder")}
+                value={leadName}
+                onChange={(event) => {
+                  setLeadName(event.target.value);
+                  if (leadContactError) setLeadContactError("");
+                }}
+              />
+            </label>
+            <label className="chat-contact-field">
+              <span>{t("chat.contact.phone")} *</span>
+              <input
+                type="tel"
+                name="chat-lead-phone"
+                autoComplete="tel"
+                inputMode="tel"
+                required
+                placeholder="+7 (___) ___-__-__"
+                value={leadPhone}
+                onChange={(event) => {
+                  setLeadPhone(maskPhone(event.target.value));
+                  if (leadContactError) setLeadContactError("");
+                }}
+              />
+            </label>
+          </div>
+          {leadContactError ? (
+            <p className="chat-contact-error" role="alert">
+              {leadContactError}
+            </p>
+          ) : null}
+          <ConsentField
+            className="chat-consent"
+            checked={leadConsent}
+            onChange={(value) => {
+              setLeadConsent(value);
+              if (value && leadContactError) setLeadContactError("");
+            }}
+          />
+          <p className="chat-contact-hint">{t("chat.contact.hint")}</p>
           <a
             className={
               "chat-link chat-link-wa" + (handoffChannel === "whatsapp" ? " is-active" : "") + (handoff ? " is-pulse" : "")

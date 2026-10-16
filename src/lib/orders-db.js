@@ -70,14 +70,21 @@ export function newOrderId() {
 /**
  * Сохранить заказ из корзины на сервере. Цены и суммы сервер берёт из своего каталога;
  * если они разошлись с корзиной, придёт ошибка catalog_changed.
- * @param {{ id?: string, channel: string, items: Array, customer: {name: string, phone: string}, message: string, sourcePage?: string }} input
+ * @param {{ id?: string, channel: string, items: Array, customer: {name: string, phone: string}, consent: true, message: string, sourcePage?: string }} input
  */
 export function saveCheckoutOrder(input) {
+  if (input.consent !== true) {
+    const err = new Error("consent_required");
+    err.code = "consent_required";
+    err.status = 400;
+    return Promise.reject(err);
+  }
   return submitPublicOrder({
     id: input.id,
     channel: input.channel === "telegram" ? "telegram" : "whatsapp",
     customerName: String(input.customer.name || "").trim(),
     customerPhone: String(input.customer.phone || "").trim(),
+    consent: true,
     items: input.items.map((item) => ({
       id: item.id,
       qty: item.qty,

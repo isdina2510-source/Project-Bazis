@@ -1,7 +1,8 @@
 # Шаблон. Не правьте домены здесь: готовый файл deploy/generated/nginx.conf создаёт команда
 #   npm run deploy:config
 # Домены берутся из SITE_DOMAIN (или SITE_URL / MEDIA_SITE_URL) в .env, порт — из PORT.
-# SITE_DOMAIN=dinarabi.com даёт server_name dinarabi.com www.dinarabi.com (+ media.dinarabi.com, если включён медиасайт).
+# SITE_DOMAIN=dinarabi.com даёт server_name dinarabi.com (+ media.dinarabi.com, если включён медиасайт).
+# www.<домен> — 301 на https://<apex>$request_uri (блоки WWW_REDIRECT_BLOCKS; если www нет — пусто).
 #
 # nginx перед server.js: HTTPS, редирект с HTTP и передача адреса посетителя.
 # Сертификаты Let's Encrypt (один на все домены):
@@ -12,6 +13,7 @@ upstream dinarabi_node {
   keepalive 16;
 }
 
+{{WWW_REDIRECT_BLOCKS}}
 # HTTP только перенаправляет на HTTPS (и отдаёт проверку certbot).
 server {
   listen 80;
@@ -27,9 +29,9 @@ server {
 }
 
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
-  http2 on;
+  # Ubuntu 24.04 nginx 1.24: HTTP/2 через флаг listen (директива "http2 on" — с 1.25.1).
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
   server_name {{NGINX_HOSTS}};
 
   ssl_certificate     /etc/letsencrypt/live/{{CERT_NAME}}/fullchain.pem;
@@ -46,6 +48,20 @@ server {
 
   # Вложения в ИИ-чат — до 12 МБ, картинки товаров — до 2.5 МБ.
   client_max_body_size 13m;
+
+  # Видео в «Примеры работ» из админки — до 100 МБ; передаём серверу потоком, не копя на диске nginx.
+  location = /api/portfolio/upload {
+    client_max_body_size 101m;
+    proxy_request_buffering off;
+    proxy_pass http://dinarabi_node;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+  }
 
   location / {
     proxy_pass http://dinarabi_node;

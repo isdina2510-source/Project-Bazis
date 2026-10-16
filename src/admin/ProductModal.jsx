@@ -53,6 +53,13 @@ function stockFromForm(form) {
 
 const MAX_STOCK = 999999;
 
+/** Те же варианты, что принимает сервер (resolveProductImage): файл, ссылка в интернете или путь к картинке сайта. */
+function isAcceptedImage(value) {
+  if (value.startsWith("data:image/") || /^https?:\/\/\S+$/i.test(value)) return true;
+  const path = value.replace(/\\/g, "/").replace(/^\/+/, "");
+  return path.startsWith("images/") && !path.includes("..");
+}
+
 /** product: null — создание, объект — редактирование. */
 export default function ProductModal({ product, onClose, onSaved }) {
   const isEdit = !!product;
@@ -105,6 +112,12 @@ export default function ProductModal({ product, onClose, onSaved }) {
       return;
     }
 
+    const image = form.image.trim() || form.imageUrl.trim();
+    if (image && !isAcceptedImage(image)) {
+      setError("Фото: загрузите файл или укажите ссылку https://... (или путь images/...)");
+      return;
+    }
+
     const payload = {
       title,
       description,
@@ -113,7 +126,7 @@ export default function ProductModal({ product, onClose, onSaved }) {
       kind: form.kind,
       category: form.category,
       // Пусто — товар без фото: сайт и PDF покажут нейтральную заглушку.
-      image: form.image.trim() || form.imageUrl.trim(),
+      image,
     };
     // Нетронутый остаток не отправляем: иначе сохранение карточки перезаписало бы продажи, прошедшие за это время.
     if (!isEdit) {
@@ -286,9 +299,10 @@ export default function ProductModal({ product, onClose, onSaved }) {
               )}
             </label>
             <input
-              type="url"
+              type="text"
+              inputMode="url"
               name="imageUrl"
-              placeholder="или вставьте ссылку https://..."
+              placeholder="или вставьте ссылку https://... или путь images/..."
               value={form.imageUrl}
               onChange={(event) => {
                 const value = event.target.value;

@@ -15,9 +15,10 @@ import { copyText } from "../lib/clipboard.js";
 import { buildCartOrderMessage, isCheckoutCustomerValid, whatsappUrl } from "../lib/messages.js";
 import { newOrderId, saveCheckoutOrder } from "../lib/orders-db.js";
 import { warmOrderProof } from "../lib/order-proof.js";
-import { isValidPhone } from "../lib/phone.js";
+import { isValidCustomerName, isValidPhone } from "../lib/phone.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 import { useStore } from "../store/StoreContext.jsx";
+import ConsentField from "./ConsentField.jsx";
 import ResponsiveImage from "./ResponsiveImage.jsx";
 
 const THUMB_WIDTHS = [96, 144];
@@ -29,6 +30,7 @@ const CHECKOUT_ERROR_TEXT = {
   rate_limited: "cart.status.rate_limited",
   busy: "cart.status.busy",
   customer_required: "cart.status.invalid",
+  consent_required: "contact.form.error_consent",
 };
 
 function CartItem({ item, onQty, onRemove }) {
@@ -93,6 +95,7 @@ export default function CartDrawer() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [consent, setConsent] = useState(false);
   const [invalid, setInvalid] = useState({ name: false, phone: false });
   const [status, setStatus] = useState(null);
   /** Заказ в Telegram сохранён, но текст не скопировался: { text, url } — показываем текст с кнопкой копирования. */
@@ -150,10 +153,14 @@ export default function CartDrawer() {
     }
 
     if (!isCheckoutCustomerValid(customer)) {
-      const nameOk = name.trim().length >= 2;
+      const nameOk = isValidCustomerName(name);
       setInvalid({ name: !nameOk, phone: !isValidPhone(phone) });
       setStatus({ text: t("cart.status.invalid"), tone: "error" });
       (nameOk ? phoneRef : nameRef).current?.focus();
+      return;
+    }
+    if (!consent) {
+      setStatus({ text: t("contact.form.error_consent"), tone: "error" });
       return;
     }
 
@@ -183,6 +190,7 @@ export default function CartDrawer() {
         channel,
         items: cartItems,
         customer,
+        consent: true,
         message: orderMessage,
         sourcePage: location.pathname,
         website: trapRef.current ? trapRef.current.value : "",
@@ -337,7 +345,7 @@ export default function CartDrawer() {
           </div>
           <div className="cart-checkout-fields">
             <label>
-              {t("cart.name_label")}
+              {t("cart.name_label")} *
               <input
                 ref={nameRef}
                 type="text"
@@ -352,7 +360,7 @@ export default function CartDrawer() {
               />
             </label>
             <label>
-              {t("cart.phone_label")}
+              {t("cart.phone_label")} *
               <input
                 ref={phoneRef}
                 type="tel"
@@ -368,6 +376,14 @@ export default function CartDrawer() {
             </label>
             {/* Ловушка для ботов: люди это поле не видят и не заполняют. */}
             <input ref={trapRef} className="form-trap" type="text" name="hp_note" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+            <ConsentField
+              className="cart-consent"
+              checked={consent}
+              onChange={(value) => {
+                setConsent(value);
+                if (value) setStatus(null);
+              }}
+            />
             <p className="cart-checkout-hint">{t("cart.hint")}</p>
             <p
               className="cart-checkout-status"

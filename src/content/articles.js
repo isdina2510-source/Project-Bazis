@@ -1,11 +1,12 @@
 /**
  * Раздел «Полезные статьи»: статьи (type: "article") и короткие тесты (type: "test").
- * Казахский текст — поля с суффиксом _kk (title_kk, excerpt_kk …); без них показывается русский.
+ * Казахский текст — в articles.kk.js (раскладывается в поля _kk: title_kk, excerpt_kk …); без него показывается русский.
  * Блоки статьи: { h2 }, { p }, { ul: [...] }, { ol: [...] }, { tip }.
  * cta.productId — услуга из каталога, которую предлагаем после чтения.
  * category — раздел каталога: статья видна на том сайте, который показывает этот раздел.
  */
 import { siteHasCategory } from "../site.js";
+import { applyKazakh } from "./articles.kk.js";
 
 // i18n-ignore-start: контент статей переводится полями _kk, а не словарём
 export const ARTICLES = [
@@ -361,7 +362,7 @@ export const ARTICLES = [
 // i18n-ignore-end
 
 /** Публикации этого сайта: по разделу каталога, к которому относится статья. */
-const SITE_ARTICLES = ARTICLES.filter((item) => siteHasCategory(item.category));
+const SITE_ARTICLES = ARTICLES.filter((item) => siteHasCategory(item.category)).map(applyKazakh);
 
 export function findArticle(slug) {
   return SITE_ARTICLES.find((item) => item.slug === slug) || null;

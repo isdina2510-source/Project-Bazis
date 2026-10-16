@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "node:path";
+import { cpSync, existsSync, readFileSync, statSync } from "node:fs";
+import { extname, resolve, sep } from "node:path";
 import { i18nHtml } from "./scripts/i18n-html.mjs";
 import { HERO_IMAGE } from "./src/lib/hero.js";
 import { responsiveSources } from "./src/lib/images.js";
@@ -64,7 +65,7 @@ function heroPreload() {
 }
 
 /** Класс сайта на <body> и цвет панели браузера сразу в HTML: тема применяется до выполнения JS, без мигания. */
-function siteTheme(siteId, { themeColor, ogImage }) {
+function siteTheme(siteId, { themeColor, ogImage, publicOverlay }) {
   return {
     name: "site-theme",
     transformIndexHtml(html) {
@@ -72,6 +73,10 @@ function siteTheme(siteId, { themeColor, ogImage }) {
         /class=/.test(attrs) ? match : `<body${attrs} class="site-${siteId}">`
       );
       if (themeColor) out = out.replace(/(<meta name="theme-color" content=")[^"]*(")/, `$1${themeColor}$2`);
+      if (publicOverlay) {
+        // Свои иконки лежат по тем же адресам, что и у основного сайта, — другая версия сбрасывает кэш браузера.
+        out = out.replace(/(<link rel="(?:icon|apple-touch-icon|manifest)" href="[^"?]+)(?:\?v=[^"]*)?"/g, `$1?v=${siteId}-4"`);
+      }
       if (ogImage) {
         out = out.replace(/(<meta (?:property="og:image"|name="twitter:image") content=")[^"]*(")/g, `$1${ogImage}$2`);
       }
@@ -79,6 +84,34 @@ function siteTheme(siteId, { themeColor, ogImage }) {
     },
   };
 }
+
+/** Файлы сайта (иконки, манифест) поверх общих из public/ — Vite умеет только одну папку public. */
+function publicOverlay(dir, outDir) {
+  const root = resolve(import.meta.dirname, dir);
+  return {
+    name: "public-overlay",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const name = decodeURIComponent((req.url || "").split("?")[0]).replace(/^\/+/, "");
+        const file = resolve(root, name);
+        if (!name || !file.startsWith(root + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
+        res.setHeader("Content-Type", OVERLAY_TYPES[extname(file)] || "application/octet-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.end(readFileSync(file));
+      });
+    },
+    closeBundle() {
+      cpSync(root, resolve(import.meta.dirname, outDir), { recursive: true });
+    },
+  };
+}
+
+const OVERLAY_TYPES = {
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+};
 
 export default defineConfig(({ mode, command }) => {
   const env = { ...loadEnv(mode, import.meta.dirname, ""), ...process.env };
@@ -108,6 +141,7 @@ export default defineConfig(({ mode, command }) => {
       siteTheme(siteId, site),
       i18nHtml({ origin, site: siteId }),
       buildInfo(siteId, origin),
+      ...(site.publicOverlay ? [publicOverlay(site.publicOverlay, site.outDir)] : []),
     ],
     define: {
       "import.meta.env.VITE_SITE": JSON.stringify(siteId),

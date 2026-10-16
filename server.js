@@ -23,7 +23,21 @@ const { sharpStatus } = require("./documents/images");
 const { createSender } = require("./documents/send");
 const { createDocumentsHttpHandler } = require("./documents/http");
 const { normalizeClientRequisites } = require("./documents/requisites");
-const { MIN_LENGTH: ADMIN_PASSWORD_MIN_LENGTH, checkAdminPassword, headerMatchesPassword } = require("./auth/admin-password");
+const {
+  MIN_LENGTH: ADMIN_PASSWORD_MIN_LENGTH,
+  checkAdminPassword,
+  headerMatchesPassword,
+  passwordMatches,
+} = require("./auth/admin-password");
+const {
+  ABSOLUTE_TTL_MS: ADMIN_SESSION_TTL_MS,
+  createAdminSessions,
+  cookieSecureFlag,
+  sessionCookieHeader,
+  clearSessionCookieHeader,
+  readSessionToken,
+  cookieRequestOriginOk,
+} = require("./auth/admin-session");
 const { installFileLog } = require("./logging/file-log");
 const { securityHeaders, isAdminPath } = require("./security/headers");
 const { loadEnvFile } = require("./config/env");
@@ -38,6 +52,7 @@ const { createFileSender } = require("./runtime/static-file");
 const { createHealthHandler } = require("./runtime/health");
 const { createShutdown, watchStopFile, createCrashHandler } = require("./runtime/shutdown");
 const { createUploadRemover } = require("./runtime/uploads");
+const { createPortfolioHandler } = require("./runtime/portfolio");
 const { version: APP_VERSION } = require("./package.json");
 
 loadEnvFile(path.join(__dirname, ".env"));
@@ -238,7 +253,8 @@ const DISCUSS_ONLY_CATEGORIES = new Set(CART_RULES.discussOnlyCategories);
 const SINGLE_QTY_IDS = new Set(CART_RULES.singleQtyIds);
 const SINGLE_QTY_TITLE_RE = new RegExp(CART_RULES.singleQtyTitlePattern, "i");
 const ORDER_ID_RE = /^ord_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATA_APIS = new Set(["orders", "clients", "products", "settings", "documents"]);
+const DATA_APIS = new Set(["orders", "clients", "products", "settings", "documents", "admin"]);
+const adminSessions = createAdminSessions();
 const ORDER_STATUSES = ["new", "in_progress", "done", "cancelled"];
 const LEGACY_REDIRECTS = {
   "/index.html": "/",
@@ -268,6 +284,9 @@ const MIME = {
   ".ico": "image/x-icon",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".woff2": "font/woff2",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
 };
 
 const CURRENCIES = new Set(["KZT", "RUB", "USD"]);
@@ -807,6 +826,9 @@ function sendJson(res, status, body, req, options = {}) {
     "Content-Type": "application/json; charset=utf-8",
     ...corsHeaders(req),
   };
+  // writeHead({...}) затирает ранее выставленные setHeader — cookies логина/выхода иначе не уходят.
+  const pendingCookie = res.getHeader("Set-Cookie");
+  if (pendingCookie) headers["Set-Cookie"] = pendingCookie;
   if (options.etag && status === 200) {
     const etag = '"' + crypto.createHash("sha1").update(payload).digest("base64url") + '"';
     headers.ETag = etag;
@@ -1065,8 +1087,25 @@ function chatCodeFor(orderId) {
   return String(orderId).replace(/^ord_/, "").replace(/-/g, "").slice(0, 6).toUpperCase();
 }
 
+function adminCookieSecure(req) {
+  return cookieSecureFlag({
+    localHost: isLocalHost(req),
+    https: forwardedProto(req, TRUST_PROXY) === "https",
+  });
+}
+
+/** Пароль в заголовке (скрипты/e2e) или действующая cookie-сессия браузера. */
 function isAdmin(req) {
-  return headerMatchesPassword(req.headers["x-admin-password"], ADMIN_PASSWORD);
+  if (headerMatchesPassword(req.headers["x-admin-password"], ADMIN_PASSWORD)) return true;
+  const token = readSessionToken(req);
+  if (!token) return false;
+  if (!adminSessions.touch(token)) return false;
+  // Cookie-сессия на мутациях — только со своего origin (доп. к SameSite=Strict).
+  if (req.method && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    // Только тот же Host, что у cookie (host-only) — чужой поддомен не подходит.
+    if (!cookieRequestOriginOk(req, { allowedHostnames: null })) return false;
+  }
+  return true;
 }
 
 /**
@@ -1085,12 +1124,82 @@ function requireAdmin(req, res) {
   }
   if (isOverRateLimit(adminFailBuckets, ip, ADMIN_RATE_LIMIT, ADMIN_RATE_WINDOW_MS)) return tooMany();
   if (!isAdmin(req)) {
-    checkRateLimit(adminFailBuckets, ip, ADMIN_RATE_LIMIT, ADMIN_RATE_WINDOW_MS);
+    // Неверный пароль в заголовке считаем попыткой входа; протухшая cookie — нет (иначе логаут забивал бы лимит).
+    if (String(req.headers["x-admin-password"] || "").trim()) {
+      checkRateLimit(adminFailBuckets, ip, ADMIN_RATE_LIMIT, ADMIN_RATE_WINDOW_MS);
+    }
     sendJson(res, 401, { error: "unauthorized" }, req);
     return false;
   }
   if (!checkRateLimit(adminRateBuckets, ip, ADMIN_RATE_LIMIT * 10, ADMIN_RATE_WINDOW_MS)) return tooMany();
   return true;
+}
+
+/**
+ * Вход/выход админки: пароль принимается один раз, дальше — HttpOnly cookie.
+ * GET  /api/admin/session — есть ли сессия
+ * POST /api/admin/login   — { password }
+ * POST /api/admin/logout  — сброс cookie
+ */
+async function handleAdminAuthApi(req, res, action) {
+  if (req.method === "GET" && action === "session") {
+    if (isInsecureProxiedRequest(req)) {
+      sendJson(res, 403, { error: "https_required", message: "Админка работает только по HTTPS" }, req);
+      return;
+    }
+    const ok = adminSessions.touch(readSessionToken(req));
+    sendJson(res, ok ? 200 : 401, ok ? { ok: true } : { error: "unauthorized" }, req);
+    return;
+  }
+
+  if (req.method === "POST" && action === "logout") {
+    const token = readSessionToken(req);
+    if (token) adminSessions.destroy(token);
+    res.setHeader("Set-Cookie", clearSessionCookieHeader({ secure: adminCookieSecure(req) }));
+    sendJson(res, 200, { ok: true }, req);
+    return;
+  }
+
+  if (req.method === "POST" && action === "login") {
+    const ip = clientIp(req);
+    const tooMany = () => {
+      sendJson(res, 429, { error: "rate_limited", message: "Слишком много запросов. Подождите минуту." }, req);
+    };
+    if (isInsecureProxiedRequest(req)) {
+      sendJson(res, 403, { error: "https_required", message: "Админка работает только по HTTPS" }, req);
+      return;
+    }
+    if (isOverRateLimit(adminFailBuckets, ip, ADMIN_RATE_LIMIT, ADMIN_RATE_WINDOW_MS)) {
+      tooMany();
+      return;
+    }
+    if (!isJsonRequest(req)) {
+      sendJson(res, 415, { error: "unsupported_media_type", message: "Ожидается JSON (Content-Type: application/json)" }, req);
+      return;
+    }
+    const body = await readJsonObject(req, 8 * 1024);
+    const password = body && body.password != null ? body.password : "";
+    if (!passwordMatches(password, ADMIN_PASSWORD)) {
+      checkRateLimit(adminFailBuckets, ip, ADMIN_RATE_LIMIT, ADMIN_RATE_WINDOW_MS);
+      sendJson(res, 401, { error: "unauthorized" }, req);
+      return;
+    }
+    // Старую cookie этой вкладки сбрасываем: один вход — одна новая сессия (fixation).
+    const previous = readSessionToken(req);
+    if (previous) adminSessions.destroy(previous);
+    const token = adminSessions.create();
+    res.setHeader(
+      "Set-Cookie",
+      sessionCookieHeader(token, {
+        secure: adminCookieSecure(req),
+        maxAgeSec: Math.floor(ADMIN_SESSION_TTL_MS / 1000),
+      })
+    );
+    sendJson(res, 200, { ok: true }, req);
+    return;
+  }
+
+  sendJson(res, 405, { error: "method_not_allowed" }, req);
 }
 
 /** Путь внутри baseDir или null, если запрос пытается выйти за его пределы. */
@@ -1200,17 +1309,14 @@ async function handleOrdersApi(req, res, orderId, url) {
 
   if (req.method === "POST" && !orderId) {
     const body = await readJsonObject(req);
-    // Переход из ИИ-чата в мессенджер — тоже заявка с сайта; имя и телефон клиент мог не называть.
+    // Заявка с формы, заказ из корзины и переход из ИИ-чата — везде нужны имя и телефон.
     const fromChat = body.channel === "chat";
-    let customerName = String(body.customerName || "").trim().slice(0, 120);
-    let customerPhone = String(body.customerPhone || "").trim().slice(0, 32);
-    let phoneDigits = normalizePhone(customerPhone);
+    const customerName = String(body.customerName || "").trim().slice(0, 120);
+    const customerPhone = String(body.customerPhone || "").trim().slice(0, 32);
+    const phoneDigits = normalizePhone(customerPhone);
     const nameOk = customerName.length >= 2 && !SPAM_NAME_RE.test(customerName);
     const phoneOk = phoneDigits.length >= 11 && phoneDigits.length <= 15;
-    if (fromChat) {
-      if (!nameOk) customerName = "";
-      if (!phoneOk) customerPhone = phoneDigits = "";
-    } else if (!nameOk || !phoneOk) {
+    if (!nameOk || !phoneOk) {
       sendJson(res, 400, {
         error: "customer_required",
         message: "Укажите имя и телефон",
@@ -1218,6 +1324,14 @@ async function handleOrdersApi(req, res, orderId, url) {
       return;
     }
     const channel = fromChat ? "site" : ["telegram", "site"].includes(body.channel) ? body.channel : "whatsapp";
+    // Форма, чат и корзина — везде ПД; согласие обязательно, время ставит только сервер.
+    if (body.consent !== true) {
+      sendJson(res, 400, {
+        error: "consent_required",
+        message: "Нужно согласие на обработку персональных данных",
+      }, req);
+      return;
+    }
     const rawLead = body.lead && typeof body.lead === "object" ? body.lead : {};
     const leadCategory = CATEGORIES.find((item) => item.id === String(rawLead.direction || "")) || null;
     // Случайный UUID от браузера — ключ идемпотентности; иначе id выдаёт сервер, чтобы его нельзя было угадать.
@@ -1294,6 +1408,8 @@ async function handleOrdersApi(req, res, orderId, url) {
           comment: String(rawLead.comment || "").trim().slice(0, 2000),
         };
       }
+      // Время согласия на обработку персональных данных — подтверждение для проверок; хранится в extra.
+      created.consentAt = now;
       if (fromChat) {
         created.leadSource = "chat";
         created.handoff = body.handoff === "telegram" ? "telegram" : "whatsapp";
@@ -1665,6 +1781,11 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (parts[1] === "admin" && parts.length === 3 && ["login", "logout", "session"].includes(parts[2])) {
+    await handleAdminAuthApi(req, res, parts[2]);
+    return;
+  }
+
   if (documentsHttp.matches(parts)) {
     await documentsHttp.handle(req, res, parts);
     return;
@@ -1682,6 +1803,11 @@ async function handleApi(req, res, url) {
 
   if (parts[1] === "products") {
     await handleProductsApi(req, res, parts[2] || null);
+    return;
+  }
+
+  if (portfolioHttp.matches(parts)) {
+    await portfolioHttp.handle(req, res, parts);
     return;
   }
 
@@ -1868,6 +1994,15 @@ const documentsHttp = createDocumentsHttpHandler(() => documents, sender, {
   readJsonObject,
   requireAdmin,
   corsHeaders,
+});
+const portfolioHttp = createPortfolioHandler({
+  getStore: () => store,
+  uploadsDir: UPLOADS_DIR,
+  sendJson,
+  readJsonObject,
+  isJsonRequest,
+  requireAdmin,
+  deleteUpload: deleteUploadIfOwned,
 });
 
 const AI_BUDGET_KEY = "ai_budget";

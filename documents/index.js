@@ -478,6 +478,8 @@ function createDocuments(options) {
         sourcePage: order.sourcePage,
         note: order.note,
         comment: (order.lead && order.lead.comment) || order.message || "",
+        fromChat: order.leadSource === "chat",
+        consentAt: order.consentAt || "",
       },
     });
     return { buffer, fileName: safeFileName("Заявка " + (order.customerName || order.id) + ".pdf") };

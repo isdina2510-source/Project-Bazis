@@ -71,7 +71,7 @@ try {
   $upd = Api PATCH "/api/orders/$($order.id)" @{ status = "in_progress" }
   Check "статус «в работе»" ($upd.status -eq "in_progress")
 
-  $lead = Api POST "/api/orders" @{ customerName = "Тест Заявка"; customerPhone = "+7 701 000 00 01"; channel = "site"; lead = @{ direction = $prod.category; comment = "Проверка Docker" }; proof = (New-Proof) }
+  $lead = Api POST "/api/orders" @{ customerName = "Тест Заявка"; customerPhone = "+7 701 000 00 01"; channel = "site"; consent = $true; lead = @{ direction = $prod.category; comment = "Проверка Docker" }; proof = (New-Proof) }
   Check "заявка с сайта создана" ([bool]$lead.id)
   $pdf = Api GET "/api/orders/$($lead.id)/lead.pdf"
   $sig = [Text.Encoding]::ASCII.GetString($pdf.RawContentStream.ToArray()[0..3])

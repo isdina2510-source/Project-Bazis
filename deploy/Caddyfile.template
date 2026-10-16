@@ -20,9 +20,13 @@
 		?Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
-	# Вложения в ИИ-чат — до 12 МБ, картинки товаров — до 2.5 МБ.
-	request_body {
+	# Вложения в ИИ-чат — до 12 МБ, картинки товаров — до 2.5 МБ; видео в «Примеры работ» из админки — до 100 МБ.
+	@not_portfolio_upload not path /api/portfolio/upload
+	request_body @not_portfolio_upload {
 		max_size 13MB
+	}
+	request_body /api/portfolio/upload {
+		max_size 101MB
 	}
 
 	reverse_proxy 127.0.0.1:{{PORT}} {

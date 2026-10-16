@@ -3,7 +3,7 @@
  * локальный разбор (.docx, несжатые PDF, текст) — запасной путь, если сервер недоступен.
  */
 
-import { LOCALES, getLang, t } from "../i18n/index.js";
+import { intlLocale, t } from "../i18n/index.js";
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const MAX_TEXT_CHARS = 12000;
@@ -15,7 +15,7 @@ const SERVER_PARSE_TIMEOUT_MS = 30000;
 
 export function formatBytes(n) {
   if (n < 1024) return t("file.size_b", { size: String(n) });
-  const fmt = new Intl.NumberFormat(LOCALES[getLang()], { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const fmt = new Intl.NumberFormat(intlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   if (n < 1024 * 1024) return t("file.size_kb", { size: fmt.format(n / 1024) });
   return t("file.size_mb", { size: fmt.format(n / (1024 * 1024)) });
 }

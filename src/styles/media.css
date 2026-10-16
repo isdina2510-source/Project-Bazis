@@ -387,11 +387,194 @@ body.site-media {
   aspect-ratio: auto;
 }
 
-.mh-work img {
+button.mh-work {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mh-works[hidden] {
+  display: none;
+}
+
+.mh-work img,
+.mh-work video,
+.mh-tile video {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.6s ease;
+}
+
+.mh-work:hover video {
+  transform: scale(1.05);
+}
+
+.mh-work-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 3.6rem;
+  height: 3.6rem;
+  padding-left: 0.2rem;
+  border-radius: 50%;
+  background: rgba(20, 15, 36, 0.55);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 1.3rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* ---------- окно работы: видео/фото и условия ---------- */
+
+.work-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.work-modal-open {
+  overflow: hidden;
+}
+
+.work-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 15, 36, 0.7);
+  animation: work-modal-fade 0.25s ease;
+}
+
+.work-modal-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  width: min(100%, 1100px);
+  max-height: calc(100dvh - 2.5rem);
+  overflow: hidden;
+  border-radius: var(--mh-radius);
+  background: var(--paper);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  animation: work-modal-in 0.28s ease;
+}
+
+.work-modal-panel:focus {
+  outline: none;
+}
+
+.work-modal-media {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  background: #0d0a18;
+}
+
+.work-modal-media img,
+.work-modal-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: calc(100dvh - 2.5rem);
+  object-fit: contain;
+}
+
+.work-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.work-modal-body h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.4vw, 1.8rem);
+  line-height: 1.2;
+}
+
+.work-modal-body h3 {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
+
+.work-modal-kind {
+  background: var(--bg-soft);
+  color: var(--ink);
+  backdrop-filter: none;
+}
+
+.work-modal-terms {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.55;
+}
+
+.work-modal-body .btn {
+  margin-top: auto;
+}
+
+.work-modal-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 2;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(20, 15, 36, 0.6);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@keyframes work-modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes work-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+}
+
+@media (max-width: 800px) {
+  .work-modal {
+    padding: 0.6rem;
+  }
+
+  .work-modal-panel {
+    grid-template-columns: 1fr;
+    max-height: calc(100dvh - 1.2rem);
+    overflow-y: auto;
+  }
+
+  .work-modal-media img,
+  .work-modal-media video {
+    max-height: 60dvh;
+  }
+
+  .work-modal-body {
+    overflow: visible;
+  }
 }
 
 .mh-work picture {
@@ -574,6 +757,81 @@ body.site-media {
   }
 }
 
+/* ---------- чат-виджет: градиент, как у плашки «Медиа» ---------- */
+
+.site-media .chat-widget {
+  --olive: #ff7a45;
+  --olive-deep: #e8622c;
+  --graphite: #ff7a45;
+  --graphite-deep: #e8622c;
+}
+
+.site-media .chat-fab,
+.site-media .chat-panel-head,
+.site-media .chat-send,
+.site-media .chat-quick .chat-quick-contact,
+.site-media .chat-quick button.is-accent,
+.site-media .chat-link.is-active,
+.site-media .chat-link:hover,
+.site-media .chat-link:focus-visible,
+.site-media .chat-bubble-user {
+  background: var(--mh-grad);
+  border-color: transparent;
+}
+
+.site-media .chat-fab:hover,
+.site-media .chat-quick .chat-quick-contact:hover,
+.site-media .chat-quick button.is-accent:hover {
+  background: var(--mh-grad);
+  filter: brightness(0.94);
+}
+
+.site-media .chat-actions:has(.chat-link:hover) .chat-link.is-active:not(:hover) {
+  background: transparent;
+  border-color: var(--line);
+}
+
+.site-media .chat-height-bar {
+  background: rgba(20, 15, 36, 0.92);
+}
+
+.site-media .chat-bubble-user {
+  box-shadow: 0 8px 20px rgba(255, 122, 69, 0.22);
+}
+
+.site-media .chat-height-range {
+  accent-color: #fff;
+}
+
+.site-media .chat-height-range::-webkit-slider-thumb {
+  border-color: #fff;
+}
+
+.site-media .chat-height-range::-moz-range-thumb {
+  border-color: #fff;
+}
+
+.site-media .chat-messages,
+.site-media .chat-compose textarea {
+  scrollbar-color: rgba(255, 122, 69, 0.45) transparent;
+}
+
+.site-media .chat-compose textarea:focus {
+  outline-color: rgba(255, 122, 69, 0.4);
+}
+
+.site-media .chat-split-grip {
+  background: rgba(255, 122, 69, 0.3);
+}
+
+.site-media .chat-sections-toggle {
+  color: #e8622c;
+}
+
+.site-media .chat-panel-x {
+  background: rgba(255, 255, 255, 0.18);
+}
+
 @media (max-width: 380px) {
   .site-media .logo-tag {
     display: none;
@@ -581,7 +839,9 @@ body.site-media {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mh-tile {
+  .mh-tile,
+  .work-modal-backdrop,
+  .work-modal-panel {
     animation: none;
   }
 

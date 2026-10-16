@@ -1,11 +1,12 @@
 /**
  * Заявка в CRM, когда посетитель уходит из ИИ-чата в WhatsApp или Telegram.
  * Сохраняется переписка, номер обращения (он же в тексте сообщения WhatsApp — так менеджер
- * найдёт диалог в CRM) и телефон, если клиент назвал его в чате.
+ * найдёт диалог в CRM) и контакты, которые посетитель указал перед переходом.
  */
 import { newOrderId, submitPublicOrder } from "../lib/orders-db.js";
+import { isValidCustomerName, isValidPhone } from "../lib/phone.js";
 import { SITE_ID } from "../site.js";
-import { buildTranscript, chatCodeFor, clientRequest, findPhone, hasClientMessages } from "./handoff-transcript.js";
+import { buildTranscript, chatCodeFor, clientRequest, hasClientMessages } from "./handoff-transcript.js";
 import { forgetLead, isPermanentRejection, rememberLead } from "./lead-outbox.js";
 
 export { hasClientMessages };
@@ -20,15 +21,20 @@ export function createChatLeadSession() {
  * Отправить заявку в фоне, не мешая переходу в мессенджер. Ошибки посетителю не показываются:
  * он уже пишет менеджеру, а заявка нужна для учёта. До ответа сервера заявка лежит в localStorage
  * (lead-outbox.js): если страницу закрыли или отправка не удалась, она уйдёт при следующем визите.
+ * Без имени, телефона и согласия на обработку ПД заявка не создаётся — сервер такие запросы отклоняет.
  */
-export function sendChatLead(session, { history, channel, direction }) {
+export function sendChatLead(session, { history, channel, direction, customerName, customerPhone, consent }) {
   if (session.sent || session.sending || !hasClientMessages(history)) return session.sending;
+  const name = String(customerName || "").trim();
+  const phone = String(customerPhone || "").trim();
+  if (!isValidCustomerName(name) || !isValidPhone(phone) || consent !== true) return session.sending;
   const body = {
     id: session.id,
     channel: "chat",
     handoff: channel === "telegram" ? "telegram" : "whatsapp",
-    customerName: "",
-    customerPhone: findPhone(history),
+    customerName: name,
+    customerPhone: phone,
+    consent: true,
     lead: { direction: direction || "", comment: clientRequest(history) },
     // i18n-ignore-start: текст для CRM
     message: "Диалог из ИИ-чата" + (session.code ? " (обращение " + session.code + ")" : "") + "\n\n" + buildTranscript(history),

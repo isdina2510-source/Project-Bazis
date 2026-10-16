@@ -1,4 +1,4 @@
-import { t } from "../i18n/index.js";
+import { getLang, t } from "../i18n/index.js";
 import { MAX_ATTACHMENTS, MAX_TEXT_CHARS } from "./attachments.js";
 import { normalize, wantsHandoff } from "./consult.js";
 import { SITE_ID } from "../site.js";
@@ -25,6 +25,7 @@ export async function consultCloud(userText, attachments, priorHistory) {
   const payload = {
     message: String(userText || "").trim(),
     site: SITE_ID,
+    lang: getLang(),
     history: (priorHistory || [])
       .filter((item) => item && (item.role === "user" || item.role === "bot") && (item.text || item.context))
       .slice(-10)

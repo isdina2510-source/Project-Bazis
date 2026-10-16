@@ -36,10 +36,44 @@ if (missing.length) {
 
 const hosts = [...new Set(resolved.sites.flatMap((site) => site.publicHosts))];
 const primary = new URL(resolved.sites.find((site) => site.id === sitesConfig.default).url).hostname;
+const wwwHost = hosts.find((host) => host === "www." + primary) || "";
+// www обслуживается отдельными server-блоками с 301 на apex, не проксируется на Node.
+const nginxHosts = hosts.filter((host) => host !== wwwHost);
 const port = String(Number(env.PORT) || 8787);
+const wwwRedirectBlocks = wwwHost
+  ? `# www → канонический домен (apex), без проксирования на Node.
+server {
+  listen 80;
+  listen [::]:80;
+  server_name ${wwwHost};
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+  location / {
+    return 301 https://${primary}$request_uri;
+  }
+}
+
+server {
+  # Ubuntu 24.04 nginx 1.24: HTTP/2 через флаг listen (директива "http2 on" — с 1.25.1).
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
+  server_name ${wwwHost};
+
+  ssl_certificate     /etc/letsencrypt/live/${primary}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${primary}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+
+  return 301 https://${primary}$request_uri;
+}
+
+`
+  : "";
 const values = {
   CADDY_HOSTS: hosts.join(", "),
-  NGINX_HOSTS: hosts.join(" "),
+  NGINX_HOSTS: nginxHosts.join(" "),
+  WWW_REDIRECT_BLOCKS: wwwRedirectBlocks,
   CERT_NAME: primary,
   CERTBOT_DOMAINS: hosts.map((host) => "-d " + host).join(" "),
   PORT: port,

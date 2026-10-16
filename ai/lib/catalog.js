@@ -24,8 +24,11 @@ function siteCategories(siteId) {
   return new Set((site && site.categories) || []);
 }
 
-/** @param {Array<object>} products товары из базы  @param {string} siteId */
-function buildCatalogText(products, siteId) {
+/**
+ * @param {Array<object>} products товары из базы  @param {string} siteId
+ * @param {{ lang?: string }} [options] lang "kk" — рядом с названием казахское (title_kk), чтобы модель называла услуги по-казахски
+ */
+function buildCatalogText(products, siteId, { lang } = {}) {
   const allowed = siteCategories(siteId);
   const list = Array.isArray(products) ? products : [];
   const lines = [];
@@ -36,8 +39,9 @@ function buildCatalogText(products, siteId) {
     lines.push(cat.title + ":");
     items.forEach((p, i) => {
       const outOfStock = p.stock != null && p.stock <= 0;
+      const kk = lang === "kk" ? String(p.title_kk || "").trim() : "";
       lines.push(
-        i + 1 + ". " + String(p.title).trim() + " (" + formatFromPrice(p.price, p.currency) + ")" +
+        i + 1 + ". " + String(p.title).trim() + (kk ? " / " + kk : "") + " (" + formatFromPrice(p.price, p.currency) + ")" +
           (outOfStock ? " — нет в наличии" : "")
       );
     });

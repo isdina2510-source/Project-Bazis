@@ -14,7 +14,8 @@
     "build": "vite build && vite build --mode media",
     "build:bazis": "vite build",
     "build:media": "vite build --mode media",
-    "images": "node scripts/images.mjs",
+    "images": "node scripts/images.mjs && node scripts/site-icons.mjs",
+    "icons": "node scripts/site-icons.mjs",
     "preview": "npm run build && node server.js",
     "start": "node server.js",
     "server": "node server.js",
@@ -30,6 +31,8 @@
   },
   "dependencies": {
     "exceljs": "^4.4.0",
+    "i18next": "^26.4.4",
+    "i18next-browser-languagedetector": "^8.2.1",
     "intl-messageformat": "^12.1.2",
     "lenis": "^1.3.26",
     "nodemailer": "^10.0.15",
@@ -37,6 +40,7 @@
     "pg": "^8.23.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.16",
     "react-router-dom": "^7.18.4",
     "sharp": "^0.35.5",
     "unpdf": "^1.8.1"

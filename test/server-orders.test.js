@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createSandbox, startServer, ADMIN_PASSWORD } = require("./server-sandbox");
 
-const LEAD = { customerName: "Тест Админ", customerPhone: "+7 701 000 00 02", channel: "site", lead: { direction: "", comment: "" } };
+const LEAD = { customerName: "Тест Админ", customerPhone: "+7 701 000 00 02", channel: "site", consent: true, lead: { direction: "", comment: "" } };
 
 let sandbox;
 let server;
@@ -15,13 +15,65 @@ test.after(async () => {
   sandbox.cleanup();
 });
 
-function postOrder(headers = {}) {
+function postOrder(headers = {}, body = LEAD) {
   return fetch(server.url + "/api/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(LEAD),
+    body: JSON.stringify(body),
   });
 }
+
+test("заявка, чат и корзина без согласия на обработку персональных данных не принимаются", async () => {
+  for (const body of [
+    { ...LEAD, consent: undefined },
+    { ...LEAD, consent: "true" },
+    {
+      channel: "chat",
+      customerName: "Тест",
+      customerPhone: "+7 701 000 00 02",
+      lead: { direction: "", comment: "Нужен сайт" },
+      message: "Диалог",
+    },
+    {
+      channel: "whatsapp",
+      customerName: "Тест",
+      customerPhone: "+7 701 000 00 02",
+      items: [{ id: "p7", qty: 1 }],
+    },
+  ]) {
+    const res = await postOrder({}, body);
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.equal((await res.json()).error, "consent_required");
+  }
+});
+
+test("заявка или заказ без имени и телефона не принимается", async () => {
+  for (const body of [
+    { ...LEAD, customerName: "", customerPhone: "+7 701 000 00 02" },
+    { ...LEAD, customerName: "А", customerPhone: "+7 701 000 00 02" },
+    { ...LEAD, customerName: "Тест", customerPhone: "" },
+    { ...LEAD, customerName: "Тест", customerPhone: "123" },
+    { ...LEAD, customerName: "   ", customerPhone: "   " },
+    {
+      channel: "chat",
+      customerName: "",
+      customerPhone: "",
+      lead: { direction: "", comment: "Нужен сайт" },
+      message: "Диалог",
+    },
+    {
+      channel: "whatsapp",
+      customerName: "",
+      customerPhone: "",
+      items: [{ id: "p7", qty: 1 }],
+    },
+  ]) {
+    const res = await postOrder({}, body);
+    const data = await res.json();
+    assert.equal(res.status, 400, JSON.stringify({ body, data }));
+    assert.equal(data.error, "customer_required");
+  }
+});
 
 test("MED-02: верный пароль админки не освобождает POST /api/orders от антиспам-токена", async () => {
   const res = await postOrder({ "X-Admin-Password": ADMIN_PASSWORD });

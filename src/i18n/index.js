@@ -111,13 +111,21 @@ export function localizedField(item, field, lang = current) {
   return String(item[field] || "");
 }
 
+/**
+ * Локаль для чисел и дат — ru-RU для обоих языков: в Казахстане запись та же («150 000», «05.10.2026»),
+ * а часть браузеров с урезанными данными kk-KZ пишет «150,000», хотя сообщает, что kk-KZ поддерживает.
+ */
+export function intlLocale() {
+  return LOCALES[FALLBACK_LANG];
+}
+
 export function formatNumber(value, lang = current) {
-  return new Intl.NumberFormat(LOCALES[lang]).format(Number(value) || 0).replace(/\s/g, NBSP);
+  return new Intl.NumberFormat(intlLocale()).format(Number(value) || 0).replace(/\s/g, NBSP);
 }
 
 /** 05.10.2026 */
 export function formatDate(value, lang = current) {
-  return new Intl.DateTimeFormat(LOCALES[lang], { day: "2-digit", month: "2-digit", year: "numeric" }).format(
+  return new Intl.DateTimeFormat(intlLocale(), { day: "2-digit", month: "2-digit", year: "numeric" }).format(
     new Date(value)
   );
 }

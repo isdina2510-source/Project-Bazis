@@ -3,27 +3,9 @@ import { useI18n } from "../i18n/I18nProvider.jsx";
 import { newOrderId, submitPublicOrder } from "../lib/orders-db.js";
 import { warmOrderProof } from "../lib/order-proof.js";
 import { CATEGORIES, CONTACT_PHONE, categoryText, getTelegramProfileUrl } from "../lib/catalog.js";
-import { formatPhoneDisplay, isValidPhone } from "../lib/phone.js";
+import { formatPhoneDisplay, isValidCustomerName, isValidPhone, maskPhone } from "../lib/phone.js";
 import { SITE_ID } from "../site.js";
-
-/**
- * «+7 (777) 123-45-67» по мере ввода. Номер в Казахстане сам начинается с 7, поэтому первая 7 —
- * это код страны, только если поле уже начинается с «+» или цифр больше десяти; ведущая 8 — всегда префикс.
- */
-function maskPhone(raw) {
-  const value = String(raw || "").trim();
-  let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("8") || (value.startsWith("+") && digits.startsWith("7"))) digits = digits.slice(1);
-  if (digits.length > 10 && (digits.startsWith("7") || digits.startsWith("8"))) digits = digits.slice(1);
-  digits = digits.slice(0, 10);
-  if (!digits) return "";
-  let out = "+7 (" + digits.slice(0, 3);
-  if (digits.length >= 3) out += ")";
-  if (digits.length > 3) out += " " + digits.slice(3, 6);
-  if (digits.length > 6) out += "-" + digits.slice(6, 8);
-  if (digits.length > 8) out += "-" + digits.slice(8, 10);
-  return out;
-}
+import ConsentField from "./ConsentField.jsx";
 
 function Icon({ name }) {
   const paths = {
@@ -67,6 +49,7 @@ export default function ContactSection() {
 export function ContactPanel({ headingId }) {
   const { t, lang } = useI18n();
   const [form, setForm] = useState(EMPTY_FORM);
+  const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   /** { key, id }: повтор той же заявки после сбоя сети не создаст дубль в CRM. */
@@ -80,12 +63,16 @@ export function ContactPanel({ headingId }) {
   const submit = async (event) => {
     event.preventDefault();
     const name = form.name.trim();
-    if (name.length < 2) {
+    if (!isValidCustomerName(name)) {
       setError(t("contact.form.error_name"));
       return;
     }
     if (!isValidPhone(form.phone)) {
       setError(t("contact.form.error_phone"));
+      return;
+    }
+    if (!consent) {
+      setError(t("contact.form.error_consent"));
       return;
     }
     setError("");
@@ -111,6 +98,7 @@ export function ContactPanel({ headingId }) {
         customerPhone: form.phone,
         message,
         lead: { direction: form.direction, comment: form.comment.trim() },
+        consent: true,
         sourcePage: window.location.pathname,
         site: SITE_ID,
         website: trapRef.current ? trapRef.current.value : "",
@@ -118,6 +106,7 @@ export function ContactPanel({ headingId }) {
       pendingRef.current = null;
       setStatus("sent");
       setForm(EMPTY_FORM);
+      setConsent(false);
     } catch (err) {
       setStatus("idle");
       const code = err && err.code;
@@ -235,11 +224,11 @@ export function ContactPanel({ headingId }) {
             ) : null}
 
             <div className="contact-submit">
+              <ConsentField checked={consent} onChange={setConsent} />
               <button type="submit" className="btn btn-primary contact-submit-btn" disabled={status === "sending"}>
                 {status === "sending" ? t("contact.form.sending") : t("contact.form.submit")}
                 <span aria-hidden="true">→</span>
               </button>
-              <p className="contact-consent">{t("contact.form.consent")}</p>
             </div>
           </form>
         )}

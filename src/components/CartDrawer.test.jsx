@@ -49,6 +49,7 @@ describe("LOW-04: сервер отклонил количество", () => {
     );
     fireEvent.change(screen.getByPlaceholderText("+7 ..."), { target: { value: "+7 701 123 45 67" } });
     fireEvent.change(document.querySelector('input[name="checkout-name"]'), { target: { value: "Айгерим" } });
+    fireEvent.click(document.querySelector('input[name="consent"]'));
     fireEvent.click(screen.getByText("Оформить в WhatsApp", { exact: false }));
     const status = await screen.findByText(/Количество в корзине больше допустимого/);
     expect(status.textContent).not.toMatch(/cart\.status/);

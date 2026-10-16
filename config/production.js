@@ -32,7 +32,8 @@ function contentProblems({ portfolio, catalog, mediaPublished = false }) {
   const problems = [];
   if (mediaPublished && portfolio != null && portfolio.includes("images.unsplash.com")) {
     problems.push(
-      "В портфолио «Dinara BILab Медиа» стоковые фото images.unsplash.com (src/content/portfolio.js) — замените реальными работами или скройте блок."
+      "В портфолио «Dinara BILab Медиа» стоковые фото images.unsplash.com (src/content/portfolio.js): они видны, пока в админке " +
+        "(вкладка «Примеры работ») не сохранена ни одна работа. Добавьте реальные работы там — это предупреждение можно не учитывать."
     );
   }
   if (catalog != null) {

@@ -886,6 +886,16 @@ body.modal-open {
   color: #8fd6ff;
 }
 
+.crm-consent {
+  margin: 0.4rem 0 0;
+  font-size: 0.84rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.crm-consent.is-given {
+  color: #6fcf97;
+}
+
 .crm-order-note {
   margin: 0.6rem 0 0;
   white-space: pre-line;
@@ -1732,4 +1742,52 @@ label.dash-btn {
 .admin-load-banner p {
   margin: 0;
   flex: 1 1 18rem;
+}
+
+/* Примеры работ */
+
+.portfolio-admin-preview {
+  position: relative;
+}
+
+.portfolio-admin-media {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #222;
+}
+
+.portfolio-admin-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.admin-product p.portfolio-admin-terms {
+  white-space: pre-line;
+}
+
+.portfolio-default-note {
+  margin: 0 0 1rem;
+}
+
+.portfolio-video-preview {
+  width: 100%;
+  max-height: 240px;
+  border-radius: 10px;
+  background: #000;
+}
+
+.portfolio-progress {
+  width: 100%;
+  margin-top: 0.5rem;
+  accent-color: #e85d3a;
 }

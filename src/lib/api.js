@@ -1,39 +1,80 @@
-const ADMIN_PASS_KEY = "bazis_admin_password";
-const ADMIN_AUTH_KEY = "bazis_admin_auth";
 export const UNAUTHORIZED_EVENT = "bazis:admin-unauthorized";
 
-export function getAdminPassword() {
+/** Старые ключи: пароль больше не храним в sessionStorage. */
+const LEGACY_PASS_KEY = "bazis_admin_password";
+const LEGACY_AUTH_KEY = "bazis_admin_auth";
+
+function clearLegacyAdminStorage() {
   try {
-    return String(sessionStorage.getItem(ADMIN_PASS_KEY) || "").trim();
+    sessionStorage.removeItem(LEGACY_PASS_KEY);
+    sessionStorage.removeItem(LEGACY_AUTH_KEY);
   } catch {
-    return "";
+    // sessionStorage недоступен
   }
 }
 
-export function hasStoredAdminSession() {
-  try {
-    return sessionStorage.getItem(ADMIN_AUTH_KEY) === "1" && !!getAdminPassword();
-  } catch {
-    return false;
-  }
-}
-
-export function saveAdminSession(password) {
-  try {
-    sessionStorage.setItem(ADMIN_AUTH_KEY, "1");
-    sessionStorage.setItem(ADMIN_PASS_KEY, String(password || "").trim());
-  } catch {
-    // sessionStorage недоступен — работаем без восстановления сессии
-  }
-}
+clearLegacyAdminStorage();
 
 export function clearAdminSession() {
-  try {
-    sessionStorage.removeItem(ADMIN_AUTH_KEY);
-    sessionStorage.removeItem(ADMIN_PASS_KEY);
-  } catch {
-    // ignore
+  clearLegacyAdminStorage();
+}
+
+/**
+ * fetch к API сайта.
+ * admin: true — credentials (cookie-сессия) и 401 → событие повторного входа.
+ * password — только для одноразовой проверки при миграциях; обычно не нужен.
+ */
+export async function apiFetch(path, { method = "GET", body, admin = false, password, headers: extraHeaders, keepalive = false } = {}) {
+  const headers = { ...extraHeaders };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Заголовок — запасной путь для скриптов; браузерная админка его не шлёт.
+  if (password != null && password !== "") {
+    headers["X-Admin-Password"] = encodeURIComponent(String(password));
   }
+
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+    credentials: "same-origin",
+    // Запрос доживёт до ответа, даже если посетитель ушёл со страницы (переход в WhatsApp на телефоне).
+    keepalive,
+  });
+  if (admin && res.status === 401) throw unauthorizedError();
+  return res;
+}
+
+/** Вход: пароль уходит один раз в теле запроса, сервер ставит HttpOnly cookie. */
+export async function adminLogin(password) {
+  const res = await apiFetch("/api/admin/login", {
+    method: "POST",
+    body: { password: String(password || "").trim() },
+  });
+  if (res.status === 401) return { ok: false, reason: "bad_password" };
+  if (res.status === 403) return { ok: false, reason: "https" };
+  if (res.status === 429) return { ok: false, reason: "rate_limited" };
+  if (!res.ok) return { ok: false, reason: "server" };
+  return { ok: true };
+}
+
+export async function adminLogout() {
+  try {
+    await apiFetch("/api/admin/logout", { method: "POST", body: {} });
+  } catch {
+    // сеть недоступна — cookie всё равно протухнет по TTL
+  }
+  clearAdminSession();
+}
+
+/** Есть ли действующая серверная сессия (cookie). */
+export async function checkAdminSession() {
+  const res = await apiFetch("/api/admin/session");
+  if (res.status === 401) return { ok: false, reason: "bad_password" };
+  if (res.status === 403) return { ok: false, reason: "https" };
+  if (res.status === 429) return { ok: false, reason: "rate_limited" };
+  if (!res.ok) return { ok: false, reason: "server" };
+  return { ok: true };
 }
 
 export function unauthorizedError() {
@@ -45,29 +86,6 @@ export function unauthorizedError() {
     // ignore
   }
   return err;
-}
-
-/**
- * fetch к API сайта. admin: true — добавляет заголовок пароля и
- * превращает 401 в ошибку с code === "unauthorized".
- */
-export async function apiFetch(path, { method = "GET", body, admin = false, password, headers: extraHeaders, keepalive = false } = {}) {
-  const headers = { ...extraHeaders };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const pass = password != null ? password : admin ? getAdminPassword() : "";
-  // Заголовок HTTP допускает только Latin-1 — кодируем, чтобы работали пароли на кириллице.
-  if (pass) headers["X-Admin-Password"] = encodeURIComponent(pass);
-
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-    // Запрос доживёт до ответа, даже если посетитель ушёл со страницы (переход в WhatsApp на телефоне).
-    keepalive,
-  });
-  if (admin && res.status === 401) throw unauthorizedError();
-  return res;
 }
 
 export function apiError(code, message, status) {

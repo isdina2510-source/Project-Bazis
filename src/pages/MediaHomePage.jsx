@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AnchorLink from "../components/AnchorLink.jsx";
 import ArticleCard from "../components/ArticleCard.jsx";
@@ -6,11 +6,12 @@ import BrandText from "../components/BrandText.jsx";
 import { CatalogUnavailable, StaleCatalogNote } from "../components/CatalogNotices.jsx";
 import ContactSection from "../components/ContactSection.jsx";
 import ResponsiveImage from "../components/ResponsiveImage.jsx";
+import WorkModal from "../components/WorkModal.jsx";
 import { sortedArticles } from "../content/articles.js";
 import { PORTFOLIO, PORTFOLIO_KINDS } from "../content/portfolio.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
-import { formatFromPrice, productText } from "../lib/catalog.js";
-import { getPortfolioWhatsAppUrl } from "../lib/messages.js";
+import { formatFromPrice, imageSrc, productText } from "../lib/catalog.js";
+import { fetchPortfolio, workTitle } from "../lib/portfolio-api.js";
 import { useStore } from "../store/StoreContext.jsx";
 
 const BADGES = ["badge_turnkey", "badge_ai", "badge_order"];
@@ -19,18 +20,38 @@ const COLLAGE_SIZE = 4;
 const TILE_WIDTHS = [360, 480, 768];
 const WORK_WIDTHS = [360, 480, 768, 1080];
 
-function workTitle(work, lang) {
-  return (lang === "kk" && work.title_kk) || work.title;
+/** Работы из админки; пока там ничего не сохраняли или сервер не ответил — встроенные примеры. */
+function usePortfolio() {
+  const [portfolio, setPortfolio] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPortfolio()
+      .then((items) => !cancelled && setPortfolio(items || PORTFOLIO))
+      .catch(() => !cancelled && setPortfolio(PORTFOLIO));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return portfolio;
+}
+
+/** Обложка работы: фото, а у видео без фото — первый кадр. */
+function WorkCover({ work, alt, ...imageProps }) {
+  if (work.image) return <ResponsiveImage src={work.image} alt={alt} {...imageProps} />;
+  return <video src={imageSrc(work.video) + "#t=0.1"} muted playsInline preload="metadata" aria-label={alt || undefined} />;
 }
 
 export default function MediaHomePage() {
   const { lang, t, to } = useI18n();
   const { products, productsStatus, openContact } = useStore();
   const [kind, setKind] = useState("all");
+  const [openWork, setOpenWork] = useState(null);
+  const closeWork = useCallback(() => setOpenWork(null), []);
+  const portfolio = usePortfolio() || [];
 
-  const kinds = PORTFOLIO_KINDS.filter((id) => PORTFOLIO.some((work) => work.kind === id));
-  const works = PORTFOLIO.filter((work) => kind === "all" || work.kind === kind);
-  const collage = PORTFOLIO.slice(0, COLLAGE_SIZE);
+  const kinds = PORTFOLIO_KINDS.filter((id) => portfolio.some((work) => work.kind === id));
+  const works = portfolio.filter((work) => kind === "all" || work.kind === kind);
+  const collage = portfolio.slice(0, COLLAGE_SIZE);
   const articles = sortedArticles().slice(0, 3);
 
   return (
@@ -63,8 +84,8 @@ export default function MediaHomePage() {
         <div className="mh-collage" aria-hidden="true">
           {collage.map((work, index) => (
             <div className={"mh-tile mh-tile-" + (index + 1)} key={work.id}>
-              <ResponsiveImage
-                src={work.image}
+              <WorkCover
+                work={work}
                 alt=""
                 width={600}
                 height={600}
@@ -116,7 +137,7 @@ export default function MediaHomePage() {
         </div>
       </section>
 
-      <section id="works" className="section mh-works">
+      <section id="works" className="section mh-works" hidden={!portfolio.length}>
         <header className="section-head">
           <p className="eyebrow">{t("media_home.works.eyebrow")}</p>
           <h2>{t("media_home.works.title")}</h2>
@@ -139,15 +160,14 @@ export default function MediaHomePage() {
           {works.map((work, index) => {
             const title = workTitle(work, lang);
             return (
-              <a
+              <button
+                type="button"
                 className={"mh-work" + (index % 5 === 0 ? " is-wide" : "")}
                 key={work.id}
-                href={getPortfolioWhatsAppUrl(title, lang)}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => setOpenWork(work)}
               >
-                <ResponsiveImage
-                  src={work.image}
+                <WorkCover
+                  work={work}
                   alt={title}
                   width={800}
                   height={600}
@@ -155,16 +175,22 @@ export default function MediaHomePage() {
                   widths={WORK_WIDTHS}
                   sizes="(max-width: 700px) calc(100vw - 2.4rem), (max-width: 1000px) 45vw, 360px"
                 />
+                {work.video && (
+                  <span className="mh-work-play" aria-hidden="true">
+                    ▶
+                  </span>
+                )}
                 <span className="mh-work-overlay">
                   <span className="mh-work-kind">{t("media_home.works." + work.kind)}</span>
                   <span className="mh-work-title">{title}</span>
-                  <span className="mh-work-cta">{t("media_home.works.order_similar")}</span>
+                  <span className="mh-work-cta">{t("media_home.works.details")}</span>
                 </span>
-              </a>
+              </button>
             );
           })}
         </div>
       </section>
+      {openWork && <WorkModal work={openWork} onClose={closeWork} />}
 
       <section id="process" className="section mh-process">
         <header className="section-head">

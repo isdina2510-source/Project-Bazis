@@ -12,6 +12,7 @@ function leadDoc(data) {
     ["Страница сайта", lead.sourcePage],
     ["Заметка менеджера", lead.note],
   ];
+  rows.push(["Согласие на обработку ПД", lead.consentAt ? "Дано " + dateTime(lead.consentAt) : "Не зафиксировано"]);
   const content = [
     brandHeader(data),
     { text: "Заявка с сайта", style: "title" },

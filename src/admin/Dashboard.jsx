@@ -7,6 +7,7 @@ import ClientModal from "./ClientModal.jsx";
 import ClientsSection from "./ClientsSection.jsx";
 import CompanySection from "./CompanySection.jsx";
 import OrdersSection from "./OrdersSection.jsx";
+import PortfolioSection from "./PortfolioSection.jsx";
 import ProductModal from "./ProductModal.jsx";
 import ProductsSection from "./ProductsSection.jsx";
 import ReportsSection from "./ReportsSection.jsx";
@@ -16,6 +17,7 @@ const TABS = [
   { id: "leads", label: "Заявки", title: "Заявки с сайта" },
   { id: "clients", label: "Клиенты", title: "Клиенты" },
   { id: "products", label: "Товары", title: "Товары" },
+  { id: "portfolio", label: "Примеры работ", title: "Примеры работ" },
   { id: "reports", label: "Отчёты", title: "Отчёты" },
   { id: "company", label: "Реквизиты", title: "Реквизиты" },
 ];
@@ -214,6 +216,7 @@ export default function Dashboard({ onLogout }) {
               onDeleted={(id) => setProducts((prev) => prev.filter((item) => item.id !== id))}
             />
           )}
+          {tab === "portfolio" && <PortfolioSection />}
           {tab === "reports" && (
             <ReportsSection
               orders={orders}
