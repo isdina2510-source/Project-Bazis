@@ -1653,6 +1653,18 @@ body.chat-resizing {
   font-weight: 500;
   color: var(--ink-soft);
   box-shadow: none;
+  animation: chat-typing-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-typing-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-typing {
+    animation: none;
+  }
 }
 
 .chat-cat {
@@ -2102,8 +2114,37 @@ body.chat-resizing {
   padding: 0 0.9rem 0.9rem;
   background: #fff;
   display: grid;
-  gap: 0.4rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
   flex-shrink: 0;
+}
+
+.chat-contact-form {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.15rem;
+}
+
+.chat-contact-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.chat-contact-hide {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--olive-deep, var(--ink));
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .chat-contact-fields {
@@ -2357,17 +2398,14 @@ body.chat-resizing {
   }
 
   .chat-panel-ai .chat-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.45rem;
     padding: 0.35rem 0.75rem 0.75rem;
   }
 
-  .chat-contact-fields,
-  .chat-contact-hint,
-  .chat-contact-error,
-  .chat-actions .chat-consent {
-    grid-column: 1 / -1;
+  /* Форма не должна занимать весь экран под клавиатурой — переписке остаётся место. */
+  .chat-contact-form {
+    max-height: 42dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .chat-contact-fields {
