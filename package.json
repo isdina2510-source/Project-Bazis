@@ -14,7 +14,7 @@
     "build": "vite build && vite build --mode media",
     "build:bazis": "vite build",
     "build:media": "vite build --mode media",
-    "images": "node scripts/images.mjs && node scripts/site-icons.mjs",
+    "images": "node scripts/images.mjs && node scripts/site-icons.mjs && node scripts/og-image.mjs",
     "icons": "node scripts/site-icons.mjs",
     "preview": "npm run build && node server.js",
     "start": "node server.js",

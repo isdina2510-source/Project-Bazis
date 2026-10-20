@@ -42,6 +42,12 @@ export function localizeHtml(html, page, lang, origin = "") {
   out = setMeta(out, "property", "og:site_name", head.siteName);
   out = setMeta(out, "name", "twitter:title", head.twitterTitle);
   out = setMeta(out, "name", "twitter:description", head.twitterDescription);
+  out = setMeta(out, "property", "og:image:alt", head.title);
+  out = setMeta(out, "name", "twitter:image:alt", head.title);
+  // Мессенджеры и соцсети берут картинку превью только по полному адресу.
+  if (origin) {
+    out = out.replace(/(<meta (?:property="og:image"|name="twitter:image") content=")(\/[^/"][^"]*)(")/g, `$1${origin}$2$3`);
+  }
 
   const tags = [
     `<link rel="canonical" href="${escapeAttr(head.canonical)}" />`,

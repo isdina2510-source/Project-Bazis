@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, readFileSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import { i18nHtml } from "./scripts/i18n-html.mjs";
@@ -64,6 +65,20 @@ function heroPreload() {
   };
 }
 
+/**
+ * Адрес картинки превью из public/ (или папки сайта поверх неё) с версией по содержимому:
+ * соцсети кэшируют картинку по адресу, и без версии после замены долго показывают старую.
+ */
+function versionedOgImage(src, overlayDir) {
+  if (!src.startsWith("/")) return src;
+  const name = src.slice(1).split("?")[0];
+  const dirs = [overlayDir, "public"].filter(Boolean);
+  const file = dirs.map((dir) => resolve(import.meta.dirname, dir, name)).find((path) => existsSync(path));
+  if (!file) throw new Error(`Картинка превью ${src} не найдена в ${dirs.join(", ")}: запустите npm run images.`);
+  const version = createHash("sha256").update(readFileSync(file)).digest("hex").slice(0, 10);
+  return `/${name}?v=${version}`;
+}
+
 /** Класс сайта на <body> и цвет панели браузера сразу в HTML: тема применяется до выполнения JS, без мигания. */
 function siteTheme(siteId, { themeColor, ogImage, publicOverlay }) {
   return {
@@ -77,10 +92,10 @@ function siteTheme(siteId, { themeColor, ogImage, publicOverlay }) {
         // Свои иконки лежат по тем же адресам, что и у основного сайта, — другая версия сбрасывает кэш браузера.
         out = out.replace(/(<link rel="(?:icon|apple-touch-icon|manifest)" href="[^"?]+)(?:\?v=[^"]*)?"/g, `$1?v=${siteId}-4"`);
       }
-      if (ogImage) {
-        out = out.replace(/(<meta (?:property="og:image"|name="twitter:image") content=")[^"]*(")/g, `$1${ogImage}$2`);
-      }
-      return out;
+      return out.replace(
+        /(<meta (?:property="og:image"|name="twitter:image") content=")([^"]*)(")/g,
+        (_, start, src, end) => start + versionedOgImage(ogImage || src, publicOverlay) + end
+      );
     },
   };
 }
