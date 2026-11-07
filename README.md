@@ -50,6 +50,8 @@
 
 На Linux — systemd: пример в `deploy/bazis.service` (`Restart=always`). Сборку там делайте при обновлении: `npm ci && npm run build`, затем `sudo systemctl restart bazis`.
 
+Боевой сайт dinarabi.com работает на отдельном сервере (Docker в `/opt/bazis`, SSH-хост `dinarabi` в `~/.ssh/config`), а не на этом компьютере. Выкладка последнего коммита: `powershell -ExecutionPolicy Bypass -File scripts\deploy-vps.ps1` (с `-CheckOnly` — только проверка). Скрипт кладёт на сервер файлы из git (`.env` и данные не трогает), перед этим сохраняет архив кода и копию базы в `/opt/bazis-backups` и образ `bazis-site:rollback-<время>`, пересобирает контейнер и ждёт `healthy`; команда отката — в его выводе. Ключ SSH с паролем заранее добавьте в агент: `Start-Service ssh-agent` (от администратора), затем `ssh-add $HOME\.ssh\dinara_vps`.
+
 ## Разработка
 
 ```
