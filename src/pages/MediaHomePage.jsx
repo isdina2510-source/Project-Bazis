@@ -24,13 +24,11 @@ const WORK_WIDTHS = [360, 480, 768, 1080];
 function usePortfolio() {
   const [portfolio, setPortfolio] = useState(null);
   useEffect(() => {
-    let cancelled = false;
-    fetchPortfolio()
-      .then((items) => !cancelled && setPortfolio(items || PORTFOLIO))
-      .catch(() => !cancelled && setPortfolio(PORTFOLIO));
-    return () => {
-      cancelled = true;
-    };
+    const controller = new AbortController();
+    fetchPortfolio({ signal: controller.signal })
+      .then((items) => !controller.signal.aborted && setPortfolio(items || PORTFOLIO))
+      .catch(() => !controller.signal.aborted && setPortfolio(PORTFOLIO));
+    return () => controller.abort();
   }, []);
   return portfolio;
 }

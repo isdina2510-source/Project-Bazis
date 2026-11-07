@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { I18nProvider } from "../i18n/I18nProvider.jsx";
 import { StoreProvider } from "../store/StoreContext.jsx";
 import { clientErrorReports, jsonResponse, mockFetch } from "../test/fetch-mock.js";
@@ -32,6 +32,44 @@ describe("MED-11: каталог витрины, когда сервер не о
     expect(screen.getByRole("link", { name: "Написать в Telegram" })).toBeTruthy();
     expect(document.querySelectorAll(".product-card")).toHaveLength(0);
     expect(clientErrorReports(fetchMock).map((r) => r.message)).toEqual(["[catalog] Error: network_error"]);
+  });
+
+  test("разовый обрыв запроса (iPhone, «Load failed») — каталог загружается повтором, отчёта нет", async () => {
+    let failures = 1;
+    const fetchMock = mockFetch({
+      "GET /api/products": () => (failures-- > 0 ? new TypeError("Load failed") : jsonResponse([PRODUCT])),
+      "POST /api/client-errors": new Response(null, { status: 204 }),
+    });
+    renderShop();
+    await screen.findByText("Экспресс-аудит");
+    expect(clientErrorReports(fetchMock)).toHaveLength(0);
+  });
+
+  test("посетитель офлайн — отчёт не отправляется; сеть вернулась — каталог загружается сам", async () => {
+    let online = false;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    const fetchMock = mockFetch({
+      "GET /api/products": () => (online ? jsonResponse([PRODUCT]) : new TypeError("Load failed")),
+      "POST /api/client-errors": new Response(null, { status: 204 }),
+    });
+    renderShop();
+    await screen.findByText("Каталог временно недоступен");
+    expect(clientErrorReports(fetchMock)).toHaveLength(0);
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await screen.findByText("Экспресс-аудит");
+    expect(screen.queryByText("Каталог временно недоступен")).toBeNull();
+  });
+
+  test("отчёт о сбое сети содержит исходную ошибку браузера и число попыток", async () => {
+    const fetchMock = mockFetch({
+      "GET /api/products": new TypeError("Load failed"),
+      "POST /api/client-errors": new Response(null, { status: 204 }),
+    });
+    renderShop();
+    await screen.findByText("Каталог временно недоступен");
+    const [report] = clientErrorReports(fetchMock);
+    expect(report.stack.split("\n")[0]).toBe("Причина: TypeError: Load failed; попыток: 3");
   });
 
   test("есть копия — показываем её с пометкой «Цены могут быть неактуальны»", async () => {

@@ -10,6 +10,23 @@ function parseRetryAfter(header) {
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
 }
 
+/**
+ * Имя поля лимита ответа. OpenAI принимает max_completion_tokens у всех моделей, а reasoning-модели
+ * (GPT-5.x) отклоняют старый max_tokens. Совместимые API (BAZIS_AI_URL) обычно ждут max_tokens.
+ * BAZIS_AI_TOKEN_PARAM задаёт поле явно.
+ */
+function tokenLimitParam(env, url) {
+  const explicit = String(env.BAZIS_AI_TOKEN_PARAM || "").trim();
+  if (explicit === "max_tokens" || explicit === "max_completion_tokens") return explicit;
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    host = "";
+  }
+  return host === "api.openai.com" ? "max_completion_tokens" : "max_tokens";
+}
+
 function upstreamError(status, detail, extra = {}) {
   const err = new AiError("ai_upstream_error", status, "Не удалось получить ответ от ИИ", detail);
   return Object.assign(err, extra);
@@ -25,6 +42,7 @@ function createOpenAiProvider(env) {
   const apiKey = String(env.OPENAI_API_KEY || "").trim();
   const defaultModel = String(env.BAZIS_AI_MODEL || env.OPENAI_MODEL || "gpt-4o-mini").trim();
   const url = String(env.BAZIS_AI_URL || "https://api.openai.com/v1/chat/completions").trim();
+  const tokenParam = tokenLimitParam(env, url);
 
   async function chat({ messages, model, temperature, maxTokens, json, signal, onUsage }) {
     const body = {
@@ -32,7 +50,7 @@ function createOpenAiProvider(env) {
       temperature: temperature == null ? 0.4 : temperature,
       messages,
     };
-    if (maxTokens) body.max_tokens = maxTokens;
+    if (maxTokens) body[tokenParam] = maxTokens;
     if (json) body.response_format = { type: "json_object" };
 
     let res;
@@ -90,4 +108,4 @@ function createOpenAiProvider(env) {
   };
 }
 
-module.exports = { createOpenAiProvider };
+module.exports = { createOpenAiProvider, tokenLimitParam };

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { isDiscussOnlyProduct, isOutOfStock, isSiteProduct, lineAmount, maxCartQty } from "../lib/catalog.js";
 import { CART_KEY, readCart, writeCart } from "../lib/cart-storage.js";
 import { reportClientError } from "../lib/client-errors.js";
@@ -36,19 +36,44 @@ export function StoreProvider({ children }) {
   const [contactOpen, setContactOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
+  const productsStatusRef = useRef(productsStatus);
   useEffect(() => {
-    let cancelled = false;
-    fetchProducts()
-      .then((list) => {
-        if (!cancelled) setCatalog({ list, status: "ready" });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        reportClientError(err, { kind: "catalog" });
-        setCatalog((prev) => ({ list: prev.list, status: prev.list.length ? "stale" : "error" }));
-      });
+    productsStatusRef.current = productsStatus;
+  }, [productsStatus]);
+
+  // Не загрузилось — пробуем снова, когда вернулась сеть или посетитель вернулся на вкладку.
+  useEffect(() => {
+    const controller = new AbortController();
+    let loading = false;
+    const load = () => {
+      if (loading) return;
+      loading = true;
+      fetchProducts({ signal: controller.signal })
+        .then((list) => {
+          if (!controller.signal.aborted) setCatalog({ list, status: "ready" });
+        })
+        .catch((err) => {
+          if (controller.signal.aborted) return;
+          reportClientError(err, { kind: "catalog" });
+          setCatalog((prev) => ({ list: prev.list, status: prev.list.length ? "stale" : "error" }));
+        })
+        .finally(() => {
+          loading = false;
+        });
+    };
+    const retryIfFailed = () => {
+      const failed = productsStatusRef.current === "error" || productsStatusRef.current === "stale";
+      if (failed && document.visibilityState !== "hidden") load();
+    };
+    load();
+    window.addEventListener("online", retryIfFailed);
+    window.addEventListener("pageshow", retryIfFailed);
+    document.addEventListener("visibilitychange", retryIfFailed);
     return () => {
-      cancelled = true;
+      controller.abort();
+      window.removeEventListener("online", retryIfFailed);
+      window.removeEventListener("pageshow", retryIfFailed);
+      document.removeEventListener("visibilitychange", retryIfFailed);
     };
   }, []);
 

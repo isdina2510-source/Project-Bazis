@@ -1,4 +1,4 @@
-import { apiError, apiFetch, invalidResponseError, parseApiError, readJson } from "./api.js";
+import { apiError, apiFetch, apiGetWithRetry, invalidResponseError, parseApiError, readJson } from "./api.js";
 import { normalizeKind, normalizeProduct } from "./catalog.js";
 
 /** Старый формат — просто массив, без даты. */
@@ -37,13 +37,8 @@ export function writeCachedProducts(list, savedAt = Date.now()) {
   }
 }
 
-export async function fetchProducts() {
-  let res;
-  try {
-    res = await apiFetch("/api/products");
-  } catch {
-    throw apiError("network", "network_error");
-  }
+export async function fetchProducts({ signal } = {}) {
+  const res = await apiGetWithRetry("/api/products", { signal });
   if (!res.ok) throw apiError("products_fetch_failed", "products_fetch_failed", res.status);
   const data = await readJson(res);
   const list = Array.isArray(data) ? data : data && data.products;

@@ -39,16 +39,36 @@ function writeState(state) {
 }
 
 function describe(error) {
-  if (error instanceof Error) return { message: (error.name || "Error") + ": " + error.message, stack: String(error.stack || "") };
+  if (error instanceof Error) {
+    return { message: (error.name || "Error") + ": " + error.message, stack: causeLine(error) + String(error.stack || "") };
+  }
   if (error && typeof error === "object" && "message" in error) return { message: String(error.message), stack: String(error.stack || "") };
   return { message: String(error == null ? "" : error), stack: "" };
 }
 
+/** Исходная ошибка (у network_error — «TypeError: Load failed», «timeout») — первой строкой стека, чтобы её не обрезал лимит строк. */
+function causeLine(error) {
+  const parts = [];
+  const cause = error.cause;
+  if (cause != null) parts.push(cause instanceof Error ? (cause.name || "Error") + ": " + cause.message : String(cause.message || cause));
+  if (error.attempts) parts.push("попыток: " + error.attempts); // i18n-ignore: оповещение владельцу
+  return parts.length ? "Причина: " + parts.join("; ") + "\n" : ""; // i18n-ignore: оповещение владельцу
+}
+
+/** Сбой сети, когда посетитель офлайн или ушёл со вкладки, — его связь, а не ошибка сайта. */
+function isVisitorNetworkIssue(error) {
+  if (!error || error.code !== "network") return false;
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+  return offline || hidden;
+}
+
 /**
  * Отправить ошибку. kind — откуда она: boundary:<раздел>, onerror, unhandledrejection, catalog, chat.
- * @returns {boolean} отправлена ли (false — повтор, лимит сессии или пустая ошибка)
+ * @returns {boolean} отправлена ли (false — повтор, лимит сессии, пустая ошибка или сбой связи посетителя)
  */
 export function reportClientError(error, { kind = "error", componentStack = "" } = {}) {
+  if (isVisitorNetworkIssue(error)) return false;
   const { message: raw, stack } = describe(error);
   const message = ("[" + kind + "] " + raw.trim()).slice(0, 500);
   if (!raw.trim()) return false;

@@ -1,17 +1,12 @@
-import { apiError, apiFetch, invalidResponseError, parseApiError, readJson, unauthorizedError } from "./api.js";
+import { apiError, apiFetch, apiGetWithRetry, invalidResponseError, parseApiError, readJson, unauthorizedError } from "./api.js";
 
 export const PORTFOLIO_KINDS = ["video", "cartoon", "photo", "invite", "site"];
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
 /** Работы из админки; null — там ещё ничего не сохраняли (сайт показывает встроенные примеры). */
-export async function fetchPortfolio() {
-  let res;
-  try {
-    res = await apiFetch("/api/portfolio");
-  } catch {
-    throw apiError("network", "network_error");
-  }
+export async function fetchPortfolio({ signal } = {}) {
+  const res = await apiGetWithRetry("/api/portfolio", { signal });
   if (!res.ok) throw apiError("portfolio_fetch_failed", "portfolio_fetch_failed", res.status);
   const data = await readJson(res);
   if (!data || typeof data !== "object" || (data.items !== null && !Array.isArray(data.items))) throw invalidResponseError();

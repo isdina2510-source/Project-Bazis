@@ -8,6 +8,9 @@ function num(env, name, fallback, min = 0) {
   return result.value;
 }
 
+/** Линейка OpenAI GPT-5.4 (Chat Completions, текст и картинки); nano — самая дешёвая. */
+const DEFAULT_MODEL_OPTIONS = "gpt-5.4-mini,gpt-5.4,gpt-5.4-nano";
+
 function list(value) {
   return String(value || "")
     .split(",")
@@ -24,6 +27,11 @@ function loadAiConfig(env = process.env) {
     retryMaxMs: num(env, "AI_RETRY_MAX_MS", 4000),
     /** Модели, на которые переключаемся, если основная недоступна. */
     fallbackModels: list(env.AI_FALLBACK_MODELS),
+    /**
+     * Модели, из которых админ выбирает в админке (вкладка «ИИ»). Модель из .env
+     * (BAZIS_AI_MODEL / OPENAI_MODEL) доступна всегда, даже если её нет в списке.
+     */
+    modelOptions: list(env.AI_MODEL_OPTIONS || DEFAULT_MODEL_OPTIONS),
     maxConcurrent: num(env, "AI_MAX_CONCURRENT", 8, 1),
     maxQueue: num(env, "AI_MAX_QUEUE", 50),
     queueTimeoutMs: num(env, "AI_QUEUE_TIMEOUT_MS", 10000, 100),
