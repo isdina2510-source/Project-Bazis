@@ -35,6 +35,8 @@ export function StoreProvider({ children }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  /** Панель кнопки связи (WhatsApp/Telegram); открывается и из ИИ-чата по «Связаться». */
+  const [messengerOpen, setMessengerOpen] = useState(false);
 
   const productsStatusRef = useRef(productsStatus);
   useEffect(() => {
@@ -204,6 +206,8 @@ export function StoreProvider({ children }) {
     closeContact,
     chatOpen,
     setChatOpen,
+    messengerOpen,
+    setMessengerOpen,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

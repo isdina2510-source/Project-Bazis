@@ -6,7 +6,7 @@ vi.mock("../lib/orders-db.js", () => ({
   submitPublicOrder: (...args) => submitPublicOrder(...args),
 }));
 
-const { createChatLeadSession, sendChatLead } = await import("./handoff-lead.js");
+const { createChatLeadSession, sendChatLead, sendContactLead } = await import("./handoff-lead.js");
 const { flushLeadOutbox, OUTBOX_TTL_MS } = await import("./lead-outbox.js");
 
 const OUTBOX_KEY = "bazis_chat_lead_outbox";
@@ -85,6 +85,29 @@ describe("MED-13: заявка из ИИ-чата не теряется", () => 
     });
     expect(submitPublicOrder).not.toHaveBeenCalled();
     expect(localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  test("без разговора с ИИ — обычная заявка с сайта с контактами и мессенджером", async () => {
+    submitPublicOrder.mockReset().mockResolvedValue({ id: "x" });
+    const session = createChatLeadSession();
+    await sendContactLead(session, {
+      channel: "telegram",
+      direction: "infrastructure",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: true,
+    });
+    expect(session.sent).toBe(true);
+    const body = submitPublicOrder.mock.calls[0][0];
+    expect(body).toMatchObject({
+      id: session.id,
+      channel: "site",
+      customerName: "Айгерим",
+      customerPhone: "+7 701 123 45 67",
+      consent: true,
+      lead: { direction: "infrastructure", comment: "" },
+    });
+    expect(body.message).toContain("Telegram");
   });
 
   test("успешная отправка — в localStorage ничего не остаётся", async () => {

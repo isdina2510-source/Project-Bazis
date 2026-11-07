@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CONTACT_PHONE, getTelegramProfileUrl } from "../lib/catalog.js";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 import { reportClientError } from "../lib/client-errors.js";
-import { buildHandoffMessage, whatsappUrl } from "../lib/messages.js";
-import { isValidCustomerName, isValidPhone, maskPhone } from "../lib/phone.js";
 import { useStore } from "../store/StoreContext.jsx";
-import ConsentField from "../components/ConsentField.jsx";
 import { MAX_ATTACHMENTS, formatBytes, prepareAttachment } from "./attachments.js";
 import ChatQuick from "./ChatQuick.jsx";
 import ChatText from "./ChatText.jsx";
+import { updateChatSession } from "./chat-session.js";
 import { consultCloud } from "./cloud.js";
-import { createChatLeadSession, hasClientMessages, sendChatLead } from "./handoff-lead.js";
-import { findPhone } from "./handoff-transcript.js";
-import { warmOrderProof } from "../lib/order-proof.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 import { useResizable } from "./useResizable.js";
 import {
@@ -52,10 +46,8 @@ function buildFilesContext(files) {
 const maxHeight = () => Math.max(MIN_H, Math.floor(window.innerHeight * 0.92));
 const initialHeight = () => Math.min(620, maxHeight());
 const WHEEL_FACTOR = 0.45;
-/** Шапка, ползунок высоты, поле ввода, кнопки мессенджеров и минимум переписки — разделам остаётся остальное. */
-const PANEL_CHROME_PX = 380;
-/** Раскрытая форма контактов (имя, телефон, согласие) под кнопками мессенджеров. */
-const CONTACTS_PX = 190;
+/** Шапка, ползунок высоты, поле ввода и минимум переписки — разделам остаётся остальное. */
+const PANEL_CHROME_PX = 330;
 /** Через сколько миллисекунд индикатор набора предупреждает, что ответ готовится дольше обычного. */
 const TYPING_SLOW_MS = 12000;
 const SECTIONS_MIN = 90;
@@ -86,8 +78,12 @@ function BubbleFiles({ files }) {
 }
 
 export default function ChatWidget() {
-  const { products, chatOpen: open, setChatOpen } = useStore();
-  const { lang, t } = useI18n();
+  const { products, chatOpen: open, setChatOpen, setMessengerOpen } = useStore();
+  const openMessenger = () => {
+    setChatOpen(false);
+    setMessengerOpen(true);
+  };
+  const { t } = useI18n();
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const [history, setHistory] = useState([]);
@@ -100,18 +96,7 @@ export default function ChatWidget() {
   const [lastUserText, setLastUserText] = useState("");
   const [lastFileNames, setLastFileNames] = useState([]);
   const [handoff, setHandoff] = useState(false);
-  const [handoffChannel, setHandoffChannel] = useState("whatsapp");
   const [readingFiles, setReadingFiles] = useState(0);
-  const [leadName, setLeadName] = useState("");
-  const [leadPhone, setLeadPhone] = useState("");
-  const [leadConsent, setLeadConsent] = useState(false);
-  const [leadContactError, setLeadContactError] = useState("");
-  /** Форма контактов свёрнута, пока посетитель не нажал WhatsApp/Telegram, — иначе она вытесняет переписку. */
-  const [contactsOpen, setContactsOpen] = useState(false);
-  const contactsOpenRef = useRef(contactsOpen);
-  contactsOpenRef.current = contactsOpen;
-  const leadNameRef = useRef(null);
-  const leadPhonePrefillRef = useRef("");
 
   const rootRef = useRef(null);
   const panelRef = useRef(null);
@@ -121,18 +106,15 @@ export default function ChatWidget() {
   const busyRef = useRef(false);
   const historyRef = useRef(history);
   historyRef.current = history;
-  /** Заявка в CRM при переходе в мессенджер — одна на разговор. */
-  const leadRef = useRef(null);
-  if (!leadRef.current) leadRef.current = createChatLeadSession();
+
+  useEffect(() => {
+    updateChatSession({ history, lastUserText, lastFileNames, direction: quickSection, handoff });
+  }, [history, lastUserText, lastFileNames, quickSection, handoff]);
 
   const panel = useResizable({ storageKey: HEIGHT_KEY, initial: initialHeight, min: MIN_H, max: maxHeight });
   const panelSizeRef = useRef(panel.size);
   panelSizeRef.current = panel.size;
-  const sectionsMax = useCallback(
-    () =>
-      Math.max(SECTIONS_MIN, panelSizeRef.current - PANEL_CHROME_PX - (contactsOpenRef.current ? CONTACTS_PX : 0)),
-    []
-  );
+  const sectionsMax = useCallback(() => Math.max(SECTIONS_MIN, panelSizeRef.current - PANEL_CHROME_PX), []);
   const sections = useResizable({
     storageKey: SECTIONS_KEY,
     initial: SECTIONS_INITIAL,
@@ -182,13 +164,14 @@ export default function ChatWidget() {
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
-    const last = el.lastElementChild;
+    const bubbles = el.querySelectorAll(".chat-bubble");
+    const last = bubbles[bubbles.length - 1];
     if (!typing && last && last.classList.contains("chat-bubble-bot") && last.offsetHeight > el.clientHeight) {
       el.scrollTop += last.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
       return;
     }
     el.scrollTop = el.scrollHeight;
-  }, [history, typing, typingSlow, open, contactsOpen]);
+  }, [history, typing, typingSlow, open, handoff]);
 
   useEffect(() => {
     if (!typing) {
@@ -198,10 +181,6 @@ export default function ChatWidget() {
     const timer = setTimeout(() => setTypingSlow(true), TYPING_SLOW_MS);
     return () => clearTimeout(timer);
   }, [typing]);
-
-  useEffect(() => {
-    if (contactsOpen) leadNameRef.current?.focus();
-  }, [contactsOpen]);
 
   // Блокируем прокрутку страницы под полноэкранным чатом.
   useEffect(() => {
@@ -243,7 +222,7 @@ export default function ChatWidget() {
   useEffect(() => {
     const current = resizersRef.current.sections;
     if (current.size > sectionsMax()) current.resizeBy(0);
-  }, [panel.size, sectionsMax, contactsOpen]);
+  }, [panel.size, sectionsMax]);
 
   // Поле ввода растёт под текст до COMPOSE_MAX, но не ниже высоты, выставленной пользователем.
   useLayoutEffect(() => {
@@ -384,55 +363,6 @@ export default function ChatWidget() {
     setPendingFiles((prev) => [...prev, ...prepared].slice(-MAX_ATTACHMENTS));
   };
 
-  const hasDialog = hasClientMessages(history);
-  useEffect(() => {
-    if (open && hasDialog && !leadRef.current.sent) warmOrderProof().catch(() => {});
-  }, [open, hasDialog]);
-  useEffect(() => {
-    const found = findPhone(history);
-    if (!found || found === leadPhonePrefillRef.current) return;
-    leadPhonePrefillRef.current = found;
-    setLeadPhone((prev) => (prev.trim() ? prev : maskPhone(found)));
-  }, [history]);
-  const leadCode = hasDialog ? leadRef.current.code : "";
-  const waHref = whatsappUrl(buildHandoffMessage(lastUserText, lastFileNames, lang, leadCode), CONTACT_PHONE);
-  /** Не мешает переходу по ссылке: заявка уходит в фоне (keepalive). Без имени и телефона переход блокируем. */
-  const recordHandoff = (channel) => (event) => {
-    const name = leadName.trim();
-    const contactsReady = isValidCustomerName(name) && isValidPhone(leadPhone) && leadConsent;
-    if (!contactsOpen && !contactsReady) {
-      event.preventDefault();
-      setHandoffChannel(channel);
-      setContactsOpen(true);
-      return;
-    }
-    if (!isValidCustomerName(name)) {
-      event.preventDefault();
-      setLeadContactError(t("chat.contact.error_name"));
-      return;
-    }
-    if (!isValidPhone(leadPhone)) {
-      event.preventDefault();
-      setLeadContactError(t("chat.contact.error_phone"));
-      return;
-    }
-    if (!leadConsent) {
-      event.preventDefault();
-      setLeadContactError(t("contact.form.error_consent"));
-      return;
-    }
-    setLeadContactError("");
-    setHandoffChannel(channel);
-    sendChatLead(leadRef.current, {
-      history: historyRef.current,
-      channel,
-      direction: quickSection,
-      customerName: name,
-      customerPhone: leadPhone,
-      consent: true,
-    });
-  };
-
   const panelStyle = isMobile ? undefined : { height: panel.size + "px", maxHeight: panel.size + "px" };
   const quickStyle = isMobile ? undefined : { height: sections.size + "px" };
 
@@ -520,6 +450,11 @@ export default function ChatWidget() {
               {typingSlow ? t("chat.typing_slow") : t("chat.typing")}
             </div>
           )}
+          {handoff && !typing && (
+            <button type="button" className="chat-handoff-btn" onClick={openMessenger}>
+              {t("chat.handoff_button")}
+            </button>
+          )}
         </div>
 
         {isMobile ? (
@@ -561,6 +496,7 @@ export default function ChatWidget() {
             }}
             onBack={showSections}
             onAsk={ask}
+            onContact={openMessenger}
           />
         )}
 
@@ -661,96 +597,6 @@ export default function ChatWidget() {
             </svg>
           </button>
         </form>
-
-        <div className={"chat-actions" + (contactsOpen ? " is-contacts-open" : "")}>
-          {contactsOpen && (
-            <div className="chat-contact-form">
-              <div className="chat-contact-head">
-                <p className="chat-contact-hint">{t("chat.contact.hint")}</p>
-                <button
-                  type="button"
-                  className="chat-contact-hide"
-                  onClick={() => {
-                    setContactsOpen(false);
-                    setLeadContactError("");
-                  }}
-                >
-                  {t("chat.contact.hide")}
-                </button>
-              </div>
-              <div className="chat-contact-fields">
-                <label className="chat-contact-field">
-                  <span>{t("chat.contact.name")} *</span>
-                  <input
-                    ref={leadNameRef}
-                    type="text"
-                    name="chat-lead-name"
-                    autoComplete="name"
-                    maxLength={120}
-                    required
-                    placeholder={t("chat.contact.name_placeholder")}
-                    value={leadName}
-                    onChange={(event) => {
-                      setLeadName(event.target.value);
-                      if (leadContactError) setLeadContactError("");
-                    }}
-                  />
-                </label>
-                <label className="chat-contact-field">
-                  <span>{t("chat.contact.phone")} *</span>
-                  <input
-                    type="tel"
-                    name="chat-lead-phone"
-                    autoComplete="tel"
-                    inputMode="tel"
-                    required
-                    placeholder="+7 (___) ___-__-__"
-                    value={leadPhone}
-                    onChange={(event) => {
-                      setLeadPhone(maskPhone(event.target.value));
-                      if (leadContactError) setLeadContactError("");
-                    }}
-                  />
-                </label>
-              </div>
-              {leadContactError ? (
-                <p className="chat-contact-error" role="alert">
-                  {leadContactError}
-                </p>
-              ) : null}
-              <ConsentField
-                className="chat-consent"
-                checked={leadConsent}
-                onChange={(value) => {
-                  setLeadConsent(value);
-                  if (value && leadContactError) setLeadContactError("");
-                }}
-              />
-            </div>
-          )}
-          <a
-            className={
-              "chat-link chat-link-wa" + (handoffChannel === "whatsapp" ? " is-active" : "") + (handoff ? " is-pulse" : "")
-            }
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={recordHandoff("whatsapp")}
-          >
-            {t("chat.continue_whatsapp")}
-          </a>
-          <a
-            className={
-              "chat-link chat-link-tg" + (handoffChannel === "telegram" ? " is-active" : "") + (handoff ? " is-pulse" : "")
-            }
-            href={getTelegramProfileUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={recordHandoff("telegram")}
-          >
-            Telegram
-          </a>
-        </div>
       </div>
     </div>
   );

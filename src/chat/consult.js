@@ -240,7 +240,7 @@ function consultTextOnly(products, userText) {
   if (wantsHandoff(q)) {
     return {
       text:
-        "Отлично. Перевожу вас к живому контакту Dinara BILab. Нажмите зелёную кнопку «Продолжить в WhatsApp» или Telegram — откроется чат с готовым текстом вашего запроса.",
+        "Отлично. Перевожу вас к живому контакту Dinara BILab. Нажмите зелёную кнопку WhatsApp в углу экрана (там же Telegram) — откроется чат с готовым текстом вашего запроса.",
       handoff: true,
     };
   }

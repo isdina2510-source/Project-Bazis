@@ -6,6 +6,7 @@ import { initSmoothScroll, scrollToTarget } from "../lib/smooth-scroll.js";
 import CartDrawer from "./CartDrawer.jsx";
 import ChatWidget from "../chat/ChatWidget.jsx";
 import ContactModal from "./ContactModal.jsx";
+import ContactWidget from "./ContactWidget.jsx";
 import Footer from "./Footer.jsx";
 import Header from "./Header.jsx";
 
@@ -46,6 +47,7 @@ export default function Layout() {
       <ContactModal />
       <CartDrawer />
       <Footer variant={variant} />
+      <ContactWidget />
       <ChatWidget />
     </>
   );

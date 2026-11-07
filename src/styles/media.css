@@ -771,9 +771,6 @@ button.mh-work {
 .site-media .chat-send,
 .site-media .chat-quick .chat-quick-contact,
 .site-media .chat-quick button.is-accent,
-.site-media .chat-link.is-active,
-.site-media .chat-link:hover,
-.site-media .chat-link:focus-visible,
 .site-media .chat-bubble-user {
   background: var(--mh-grad);
   border-color: transparent;
@@ -784,11 +781,6 @@ button.mh-work {
 .site-media .chat-quick button.is-accent:hover {
   background: var(--mh-grad);
   filter: brightness(0.94);
-}
-
-.site-media .chat-actions:has(.chat-link:hover) .chat-link.is-active:not(:hover) {
-  background: transparent;
-  border-color: var(--line);
 }
 
 .site-media .chat-height-bar {

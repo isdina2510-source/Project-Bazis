@@ -45,17 +45,17 @@ function ServiceRow({ group, onAsk }) {
   );
 }
 
-function ContactButton({ onAsk }) {
+function ContactButton({ onContact }) {
   const { t } = useI18n();
   return (
-    <button type="button" className="is-accent chat-quick-contact" onClick={() => onAsk(t("chat.quick.ask_contact"))}>
+    <button type="button" className="is-accent chat-quick-contact" onClick={onContact}>
       {t("chat.quick.contact")}
     </button>
   );
 }
 
-/** Быстрые кнопки под чатом: разделы → услуги раздела → «Связаться». */
-export default function ChatQuick({ products, sectionId, afterConsult, onSection, onBack, onAsk, style }) {
+/** Быстрые кнопки под чатом: разделы → услуги раздела → «Связаться» (открывает кнопку связи WhatsApp/Telegram). */
+export default function ChatQuick({ products, sectionId, afterConsult, onSection, onBack, onAsk, onContact, style }) {
   const { lang, t } = useI18n();
   const groups = getCatalogGroups(products);
   const active = groups.find((group) => group.id === sectionId);
@@ -68,7 +68,7 @@ export default function ChatQuick({ products, sectionId, afterConsult, onSection
         <BackButton wide onBack={onBack} />
         <p className="chat-quick-label">{active ? groupTitle(active) : t("chat.quick.sections")}</p>
         {active && <ServiceRow group={active} onAsk={onAsk} />}
-        <ContactButton onAsk={onAsk} />
+        <ContactButton onContact={onContact} />
       </>
     );
   } else if (active) {
@@ -79,7 +79,7 @@ export default function ChatQuick({ products, sectionId, afterConsult, onSection
           <p className="chat-quick-label">{groupTitle(active)}</p>
         </div>
         <ServiceRow group={active} onAsk={onAsk} />
-        <ContactButton onAsk={onAsk} />
+        <ContactButton onContact={onContact} />
       </>
     );
   } else {
@@ -101,7 +101,7 @@ export default function ChatQuick({ products, sectionId, afterConsult, onSection
         <button type="button" className="chat-quick-price" onClick={() => onAsk(t("chat.quick.ask_all_prices"))}>
           {t("chat.quick.all_prices")}
         </button>
-        <ContactButton onAsk={onAsk} />
+        <ContactButton onContact={onContact} />
       </>
     );
   }

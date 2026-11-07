@@ -413,7 +413,7 @@ h3,
 .fit-list li,
 .philosophy-panel li,
 .chat-quick button,
-.chat-link,
+.contact-widget-link,
 .footer {
   overflow-wrap: anywhere;
 }
@@ -1557,6 +1557,29 @@ body.chat-resizing {
   box-shadow: 0 6px 18px rgba(31, 107, 74, 0.05);
 }
 
+.chat-handoff-btn {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.5rem 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: #25d366;
+  color: #fff;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(37, 211, 102, 0.3);
+  animation: chat-bubble-in 0.28s ease both;
+}
+
+.chat-handoff-btn:hover,
+.chat-handoff-btn:focus-visible {
+  background: #1ebe5b;
+}
+
 .chat-bubble-user {
   justify-self: end;
   background: linear-gradient(160deg, #247a56 0%, var(--graphite) 100%);
@@ -1662,7 +1685,8 @@ body.chat-resizing {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-typing {
+  .chat-typing,
+  .contact-fab.is-pulse {
     animation: none;
   }
 }
@@ -2110,50 +2134,123 @@ body.chat-resizing {
   display: none;
 }
 
-.chat-panel-ai .chat-actions {
-  padding: 0 0.9rem 0.9rem;
-  background: #fff;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.45rem;
-  flex-shrink: 0;
-}
-
-.chat-contact-form {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 0.4rem;
-  padding-top: 0.15rem;
-}
-
-.chat-contact-head {
+/* Кнопка связи в WhatsApp/Telegram — над кнопкой ИИ-чата, а при открытом чате — слева от его панели. */
+.contact-widget {
+  --contact-fab: 3.4rem;
+  --contact-wa: #25d366;
+  --contact-wa-deep: #1ebe5b;
+  position: fixed;
+  right: 1.15rem;
+  bottom: calc(1.15rem + 3.4rem + 0.75rem);
+  z-index: 90;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.6rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
 }
 
-.chat-contact-hide {
-  flex-shrink: 0;
-  padding: 0;
+.contact-widget.is-chat-open {
+  right: calc(1.15rem + min(calc(100vw - 2rem), 400px) + 0.75rem);
+  bottom: 1.15rem;
+}
+
+.contact-fab {
+  width: var(--contact-fab);
+  height: var(--contact-fab);
+  border: 0;
+  border-radius: 999px;
+  background: var(--contact-wa);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(37, 211, 102, 0.35);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.contact-fab:hover {
+  background: var(--contact-wa-deep);
+  transform: translateY(-1px);
+}
+
+.contact-fab:focus-visible {
+  outline: 3px solid rgba(37, 211, 102, 0.45);
+  outline-offset: 3px;
+}
+
+.contact-fab-close {
+  display: none;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.contact-widget.is-open .contact-fab svg {
+  display: none;
+}
+
+.contact-widget.is-open .contact-fab-close {
+  display: block;
+}
+
+.contact-fab.is-pulse {
+  animation: contact-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes contact-pulse {
+  0%, 100% { box-shadow: 0 10px 28px rgba(37, 211, 102, 0.35), 0 0 0 0 rgba(37, 211, 102, 0.45); }
+  50% { box-shadow: 0 10px 28px rgba(37, 211, 102, 0.35), 0 0 0 10px rgba(37, 211, 102, 0); }
+}
+
+.contact-widget-panel {
+  width: min(calc(100vw - 2rem), 340px);
+  max-height: calc(100dvh - 9rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  box-shadow: 0 18px 40px rgba(16, 17, 20, 0.18);
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.contact-widget-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.contact-widget-head strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 1.0625rem;
+  font-weight: var(--display-weight);
+  line-height: 1.25;
+}
+
+.contact-widget-head p {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.contact-widget-x {
   border: 0;
   background: transparent;
-  color: var(--olive-deep, var(--ink));
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.chat-contact-fields {
+.contact-widget-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 0.45rem;
 }
 
-.chat-contact-field {
+.contact-widget-field {
   display: grid;
   gap: 0.2rem;
   font-size: 0.75rem;
@@ -2161,7 +2258,7 @@ body.chat-resizing {
   color: var(--muted);
 }
 
-.chat-contact-field input {
+.contact-widget-field input {
   width: 100%;
   min-height: 2.35rem;
   padding: 0.45rem 0.65rem;
@@ -2174,72 +2271,73 @@ body.chat-resizing {
   font-weight: 500;
 }
 
-.chat-contact-field input:focus {
+.contact-widget-field input:focus {
   outline: 2px solid rgba(31, 107, 74, 0.35);
   outline-offset: 1px;
   border-color: var(--accent, #1f6b4a);
 }
 
-.chat-contact-hint,
-.chat-contact-error {
+.contact-widget-hint,
+.contact-widget-error {
   margin: 0;
   font-size: 0.75rem;
   line-height: 1.35;
 }
 
-.chat-contact-hint {
+.contact-widget-hint {
   color: var(--muted);
 }
 
-.chat-contact-error {
+.contact-widget-error {
   color: #b42318;
 }
 
-.chat-actions .chat-consent {
+.contact-widget-form .contact-widget-consent {
   max-width: none;
   font-size: 0.75rem;
   color: var(--muted);
 }
 
-.chat-link {
+.contact-widget-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.contact-widget-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.45rem;
+  gap: 0.4rem;
+  min-height: 2.6rem;
   padding: 0.5rem 0.9rem;
   border-radius: 999px;
   font-size: 0.9375rem;
   font-weight: 600;
   text-decoration: none;
-  background: transparent;
   border: 1px solid var(--line);
   color: var(--ink);
+  background: transparent;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.chat-link.is-active,
-.chat-link:hover,
-.chat-link:focus-visible {
-  background: var(--graphite);
-  border-color: var(--graphite);
+.contact-widget-link-wa {
+  background: var(--contact-wa);
+  border-color: var(--contact-wa);
   color: #fff;
 }
 
-/* Курсор на другой кнопке — выбранная временно становится обычной. */
-.chat-actions:has(.chat-link:hover) .chat-link.is-active:not(:hover) {
-  background: transparent;
-  border-color: var(--line);
-  color: var(--ink);
+.contact-widget-link-wa:hover,
+.contact-widget-link-wa:focus-visible {
+  background: var(--contact-wa-deep);
+  border-color: var(--contact-wa-deep);
 }
 
-.chat-link-wa.is-pulse,
-.chat-link-tg.is-pulse {
-  animation: chat-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes chat-pulse {
-  0%, 100% { transform: scale(1); box-shadow: none; }
-  50% { transform: scale(1.02); box-shadow: 0 0 0 3px rgba(31, 107, 74, 0.25); }
+.contact-widget-link-tg:hover,
+.contact-widget-link-tg:focus-visible {
+  background: #229ed9;
+  border-color: #229ed9;
+  color: #fff;
 }
 
 /* Телефон: полноэкранный лист без ползунков и ручных ресайзов. */
@@ -2397,25 +2495,22 @@ body.chat-resizing {
     padding: 0.7rem 1rem;
   }
 
-  .chat-panel-ai .chat-actions {
-    padding: 0.35rem 0.75rem 0.75rem;
+  .contact-widget {
+    --contact-fab: 3.6rem;
+    right: max(0.85rem, env(safe-area-inset-right));
+    bottom: calc(max(0.85rem, env(safe-area-inset-bottom)) + 3.6rem + 0.75rem);
   }
 
-  /* Форма не должна занимать весь экран под клавиатурой — переписке остаётся место. */
-  .chat-contact-form {
-    max-height: 42dvh;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+  .contact-widget.is-chat-open {
+    display: none;
   }
 
-  .chat-contact-fields {
-    grid-template-columns: 1fr;
+  .contact-widget-panel {
+    max-height: calc(100dvh - 10rem);
   }
 
-  .chat-link {
-    min-height: 2.65rem;
-    font-size: 0.875rem;
-    padding: 0.45rem 0.55rem;
+  .contact-widget-field input {
+    font-size: 16px; /* без автозума iOS */
   }
 
   .chat-attach-preview {
