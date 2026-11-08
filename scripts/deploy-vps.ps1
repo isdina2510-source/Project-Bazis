@@ -56,8 +56,8 @@ if ($dirty.Count) {
   Write-Host "Незакоммиченные изменения на сервер НЕ попадут (выкладывается только коммит):" -ForegroundColor Yellow
   $dirty | ForEach-Object { Write-Host "  $_" }
 }
-$sha = (Invoke-Local { git rev-parse --short HEAD } "git rev-parse")[0].Trim()
-$subject = (Invoke-Local { git log -1 --format=%s } "git log")[0].Trim()
+$sha = @(Invoke-Local { git rev-parse --short HEAD } "git rev-parse")[0].Trim()
+$subject = @(Invoke-Local { git log -1 --format=%s } "git log")[0].Trim()
 $topLevel = Invoke-Local { git ls-tree --name-only HEAD } "git ls-tree"
 if ($topLevel | Where-Object { $_ -notmatch '^[A-Za-z0-9._-]+$' }) { throw "Имена в корне репозитория должны быть латиницей без пробелов." }
 Write-Host "Выкладываем $sha — $subject"
@@ -65,7 +65,7 @@ Write-Host "Выкладываем $sha — $subject"
 Step "Проверка сервера"
 Invoke-Remote "sudo -n true" | Out-Null
 Invoke-Remote "test -f $RemoteDir/.env && test -f $RemoteDir/docker-compose.yml" | Out-Null
-$owner = (Invoke-Remote "stat -c %u:%g $RemoteDir")[0].Trim()
+$owner = @(Invoke-Remote "stat -c %u:%g $RemoteDir")[0].Trim()
 $containers = Invoke-Remote "sudo docker ps -a --format {{.Names}}"
 foreach ($name in "$ComposeProject-bazis-1", "$ComposeProject-postgres-1") {
   if ($containers -notcontains $name) {
@@ -113,7 +113,7 @@ Write-Host "Код: $BackupDir/code-$stamp.tgz"
 # pg_dump из контейнера базы — не зависит от версии сайта на сервере.
 $dumpFile = "$BackupDir/predeploy-$stamp.sql.gz"
 Invoke-Remote "cd $RemoteDir && sudo docker compose exec -T postgres pg_dump -U bazis -d bazis --no-owner | gzip | sudo tee $dumpFile > /dev/null && sudo test -s $dumpFile && sudo gzip -t $dumpFile" | Out-Null
-$dumpSize = (Invoke-Remote "sudo stat -c %s $dumpFile")[0].Trim()
+$dumpSize = @(Invoke-Remote "sudo stat -c %s $dumpFile")[0].Trim()
 Write-Host "База: $dumpFile ($dumpSize байт)"
 Invoke-Remote "sudo docker image tag bazis-site bazis-site:rollback-$stamp" | Out-Null
 Write-Host "Образ для отката: bazis-site:rollback-$stamp"
