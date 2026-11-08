@@ -42,8 +42,10 @@ export default function ContactWidget() {
   const fabRef = useRef(null);
   const nameRef = useRef(null);
 
+  // На телефоне фокус открыл бы клавиатуру, и она закрыла бы панель — фокус только при мыши.
   useEffect(() => {
-    if (open) nameRef.current?.focus();
+    const finePointer = !window.matchMedia || window.matchMedia("(pointer: fine)").matches;
+    if (open && finePointer) nameRef.current?.focus();
   }, [open]);
 
   // Две панели в углу экрана перекрыли бы друг друга.

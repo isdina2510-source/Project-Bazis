@@ -1,7 +1,8 @@
 ﻿# Выкладка на боевой сервер (dinarabi.com): код из последнего коммита (git HEAD) — в /opt/bazis на сервере, пересборка в Docker.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\deploy-vps.ps1 -CheckOnly   — только проверить, на сервере ничего не меняется;
-#   powershell -ExecutionPolicy Bypass -File scripts\deploy-vps.ps1              — выложить.
+#   powershell -ExecutionPolicy Bypass -File scripts\deploy-vps.ps1              — выложить;
+#   … -RemoveStale — удалить на сервере файлы src/ и тестов, которых больше нет в git (они попали бы в сборку и npm test).
 #
 # Нужен SSH-доступ без вопросов (Host dinarabi в ~/.ssh/config; ключ с паролем — заранее ssh-add в запущенный ssh-agent)
 # и sudo без пароля на сервере. На сервер уходят только файлы из git: .env, help.txt, данные и тома Docker не трогаются.
@@ -13,7 +14,8 @@ param(
   [string]$BackupDir = "/opt/bazis-backups",
   [string]$SiteUrl = "https://dinarabi.com",
   [int]$HealthWaitSeconds = 240,
-  [switch]$CheckOnly
+  [switch]$CheckOnly,
+  [switch]$RemoveStale
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -29,7 +31,8 @@ function Invoke-Remote([string]$Command, [switch]$AllowFail) {
   if ($Command -match "[`"']") { throw "Кавычки в команде для сервера не поддерживаются: $Command" }
   $prev = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
-  $out = @(& ssh -o BatchMode=yes -o ConnectTimeout=20 $HostAlias "bash -o pipefail -c '$Command'" 2>&1 | ForEach-Object { "$_" })
+  # ServerAlive: сборка идёт минутами без вывода — без него соединение рвётся по простою.
+  $out = @(& ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $HostAlias "bash -o pipefail -c '$Command'" 2>&1 | ForEach-Object { "$_" })
   $code = $LASTEXITCODE
   $ErrorActionPreference = $prev
   if ($code -ne 0 -and -not $AllowFail) { throw "Команда на сервере завершилась с кодом ${code}:`n$Command`n$($out -join "`n")" }
@@ -60,10 +63,12 @@ Invoke-Remote "sudo -n true" | Out-Null
 Invoke-Remote "test -f $RemoteDir/.env && test -f $RemoteDir/docker-compose.yml" | Out-Null
 $owner = (Invoke-Remote "stat -c %u:%g $RemoteDir")[0].Trim()
 $containers = Invoke-Remote "sudo docker ps -a --format {{.Names}}"
-if ($containers -notcontains "$ComposeProject-bazis-1") {
-  throw "На сервере нет контейнера $ComposeProject-bazis-1 (есть: $($containers -join ', ')). Новый docker-compose.yml поднял бы сайт с другими томами и пустой базой — выкладка остановлена."
+foreach ($name in "$ComposeProject-bazis-1", "$ComposeProject-postgres-1") {
+  if ($containers -notcontains $name) {
+    throw "На сервере нет контейнера $name (есть: $($containers -join ', ')). Новый docker-compose.yml поднял бы сайт с другими томами и пустой базой — выкладка остановлена."
+  }
 }
-Write-Host "SSH и sudo работают; $RemoteDir на месте (владелец $owner); контейнер $ComposeProject-bazis-1 есть."
+Write-Host "SSH и sudo работают; $RemoteDir на месте (владелец $owner); контейнеры $ComposeProject-bazis-1 и $ComposeProject-postgres-1 есть."
 
 # Файлы на сервере, которых нет в git: в src/ и тестах они попали бы в сборку и в npm test.
 $tracked = @{}
@@ -76,7 +81,10 @@ if ($stale.Count) {
   $stale | Select-Object -First 40 | ForEach-Object { Write-Host "  $_" }
 }
 $risky = @($stale | Where-Object { $_ -match '^src/|(^|/)test/|\.test\.(js|jsx|mjs)$' })
-if ($risky.Count) { throw "Лишние файлы в src/ или тестах на сервере попадут в сборку — разберитесь с ними перед выкладкой." }
+if ($risky.Count -and -not $RemoveStale -and -not $CheckOnly) {
+  throw "Лишние файлы в src/ или тестах на сервере попадут в сборку. Запустите с -RemoveStale — они удалятся после резервной копии кода."
+}
+if ($risky | Where-Object { $_ -notmatch '^[A-Za-z0-9._/-]+$' }) { throw "Лишние файлы с необычными именами — удалите их на сервере вручную." }
 
 $remoteSet = @{}
 Invoke-Remote "cd $RemoteDir && find . -path ./node_modules -prune -o -path ./data -prune -o -path ./logs -prune -o -path ./dist -prune -o -path ./dist-media -prune -o -path ./images/uploads -prune -o -type f -printf %P\\n" |
@@ -95,12 +103,14 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $rollback = "откат: ssh $HostAlias, затем cd $RemoteDir && sudo tar xzf $BackupDir/code-$stamp.tgz -C $RemoteDir && sudo docker image tag bazis-site:rollback-$stamp bazis-site && sudo docker compose up -d --no-build bazis"
 
 Step "Копии перед выкладкой"
-Invoke-Remote "sudo mkdir -p $BackupDir && cd $RemoteDir && sudo tar czf $BackupDir/code-$stamp.tgz --exclude=./node_modules --exclude=./data --exclude=./logs --exclude=./images/uploads --exclude=./dist --exclude=./dist-media ." | Out-Null
+# В архиве кода есть .env с паролями — папка копий только для root.
+Invoke-Remote "sudo mkdir -p $BackupDir && sudo chmod 700 $BackupDir && cd $RemoteDir && sudo tar czf $BackupDir/code-$stamp.tgz --exclude=./node_modules --exclude=./data --exclude=./logs --exclude=./images/uploads --exclude=./dist --exclude=./dist-media ." | Out-Null
 Write-Host "Код: $BackupDir/code-$stamp.tgz"
-$dumpName = "predeploy-$stamp.json.gz"
-Invoke-Remote "cd $RemoteDir && sudo docker compose exec -T bazis node scripts/db.js dump /tmp/$dumpName && sudo docker compose cp bazis:/tmp/$dumpName $BackupDir/$dumpName && test -s $BackupDir/$dumpName" |
-  ForEach-Object { Write-Host "  $_" }
-Write-Host "База: $BackupDir/$dumpName"
+# pg_dump из контейнера базы — не зависит от версии сайта на сервере.
+$dumpFile = "$BackupDir/predeploy-$stamp.sql.gz"
+Invoke-Remote "cd $RemoteDir && sudo docker compose exec -T postgres pg_dump -U bazis -d bazis --no-owner | gzip | sudo tee $dumpFile > /dev/null && sudo test -s $dumpFile && sudo gzip -t $dumpFile" | Out-Null
+$dumpSize = (Invoke-Remote "sudo stat -c %s $dumpFile")[0].Trim()
+Write-Host "База: $dumpFile ($dumpSize байт)"
 Invoke-Remote "sudo docker image tag bazis-site bazis-site:rollback-$stamp" | Out-Null
 Write-Host "Образ для отката: bazis-site:rollback-$stamp"
 
@@ -112,6 +122,10 @@ Invoke-Local { scp -q -o BatchMode=yes $archive "${HostAlias}:$remoteArchive" } 
 Remove-Item $archive -ErrorAction SilentlyContinue
 Invoke-Remote "sudo tar xzf $remoteArchive --no-same-owner -C $RemoteDir && cd $RemoteDir && sudo chown -R $owner $($topLevel -join ' ') && rm -f $remoteArchive" | Out-Null
 Write-Host "Файлы коммита $sha разложены в $RemoteDir."
+if ($RemoveStale -and $risky.Count) {
+  Invoke-Remote "cd $RemoteDir && sudo rm -f -- $($risky -join ' ')" | Out-Null
+  Write-Host "Удалены лишние файлы ($($risky.Count)); они есть в $BackupDir/code-$stamp.tgz."
+}
 
 Step "Сборка и перезапуск (тесты внутри сборки, несколько минут)"
 try {

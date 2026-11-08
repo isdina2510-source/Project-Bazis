@@ -20,6 +20,8 @@ logs/
 .e2e-totals/
 .backup-*/
 deploy/generated/
+# Заметки администратора на сервере (/opt/bazis/help.txt) — могут содержать пароли.
+help.txt
 
 .tools/
 .git/
