@@ -5,7 +5,8 @@
 #   … -RemoveStale — удалить на сервере файлы src/ и тестов, которых больше нет в git (они попали бы в сборку и npm test).
 #
 # Нужен SSH-доступ без вопросов (Host dinarabi в ~/.ssh/config; ключ с паролем — заранее ssh-add в запущенный ssh-agent)
-# и sudo без пароля на сервере. На сервер уходят только файлы из git: .env, help.txt, данные и тома Docker не трогаются.
+# и sudo без пароля на сервере. На сервер уходят только файлы последнего коммита (незакоммиченные правки — нет):
+# .env, help.txt, данные и тома Docker не трогаются.
 # Перед заменой файлов: архив текущего кода и копия базы в /opt/bazis-backups, текущий образ — bazis-site:rollback-<время>.
 # Тесты и сборка идут внутри docker compose build: если они упали, работающий контейнер не заменяется.
 param(
@@ -51,7 +52,10 @@ function Invoke-Local([scriptblock]$Block, [string]$What) {
 
 Step "Проверка кода"
 $dirty = Invoke-Local { git status --porcelain --untracked-files=no } "git status"
-if ($dirty.Count) { throw "Есть незакоммиченные изменения — сначала закоммитьте их:`n$($dirty -join "`n")" }
+if ($dirty.Count) {
+  Write-Host "Незакоммиченные изменения на сервер НЕ попадут (выкладывается только коммит):" -ForegroundColor Yellow
+  $dirty | ForEach-Object { Write-Host "  $_" }
+}
 $sha = (Invoke-Local { git rev-parse --short HEAD } "git rev-parse")[0].Trim()
 $subject = (Invoke-Local { git log -1 --format=%s } "git log")[0].Trim()
 $topLevel = Invoke-Local { git ls-tree --name-only HEAD } "git ls-tree"
